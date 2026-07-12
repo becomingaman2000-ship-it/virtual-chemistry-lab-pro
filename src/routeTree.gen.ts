@@ -9,8 +9,50 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SyllabusRouteImport } from './routes/syllabus'
+import { Route as PricingRouteImport } from './routes/pricing'
+import { Route as LabRouteImport } from './routes/lab'
+import { Route as ContactRouteImport } from './routes/contact'
+import { Route as ChemicalsRouteImport } from './routes/chemicals'
+import { Route as ApparatusRouteImport } from './routes/apparatus'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 
+const SyllabusRoute = SyllabusRouteImport.update({
+  id: '/syllabus',
+  path: '/syllabus',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LabRoute = LabRouteImport.update({
+  id: '/lab',
+  path: '/lab',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChemicalsRoute = ChemicalsRouteImport.update({
+  id: '/chemicals',
+  path: '/chemicals',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApparatusRoute = ApparatusRouteImport.update({
+  id: '/apparatus',
+  path: '/apparatus',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -19,28 +61,130 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/apparatus': typeof ApparatusRoute
+  '/chemicals': typeof ChemicalsRoute
+  '/contact': typeof ContactRoute
+  '/lab': typeof LabRoute
+  '/pricing': typeof PricingRoute
+  '/syllabus': typeof SyllabusRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/apparatus': typeof ApparatusRoute
+  '/chemicals': typeof ChemicalsRoute
+  '/contact': typeof ContactRoute
+  '/lab': typeof LabRoute
+  '/pricing': typeof PricingRoute
+  '/syllabus': typeof SyllabusRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/apparatus': typeof ApparatusRoute
+  '/chemicals': typeof ChemicalsRoute
+  '/contact': typeof ContactRoute
+  '/lab': typeof LabRoute
+  '/pricing': typeof PricingRoute
+  '/syllabus': typeof SyllabusRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/apparatus'
+    | '/chemicals'
+    | '/contact'
+    | '/lab'
+    | '/pricing'
+    | '/syllabus'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/about'
+    | '/apparatus'
+    | '/chemicals'
+    | '/contact'
+    | '/lab'
+    | '/pricing'
+    | '/syllabus'
+  id:
+    | '__root__'
+    | '/'
+    | '/about'
+    | '/apparatus'
+    | '/chemicals'
+    | '/contact'
+    | '/lab'
+    | '/pricing'
+    | '/syllabus'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRoute
+  ApparatusRoute: typeof ApparatusRoute
+  ChemicalsRoute: typeof ChemicalsRoute
+  ContactRoute: typeof ContactRoute
+  LabRoute: typeof LabRoute
+  PricingRoute: typeof PricingRoute
+  SyllabusRoute: typeof SyllabusRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/syllabus': {
+      id: '/syllabus'
+      path: '/syllabus'
+      fullPath: '/syllabus'
+      preLoaderRoute: typeof SyllabusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lab': {
+      id: '/lab'
+      path: '/lab'
+      fullPath: '/lab'
+      preLoaderRoute: typeof LabRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chemicals': {
+      id: '/chemicals'
+      path: '/chemicals'
+      fullPath: '/chemicals'
+      preLoaderRoute: typeof ChemicalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/apparatus': {
+      id: '/apparatus'
+      path: '/apparatus'
+      fullPath: '/apparatus'
+      preLoaderRoute: typeof ApparatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -53,17 +197,14 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRoute,
+  ApparatusRoute: ApparatusRoute,
+  ChemicalsRoute: ChemicalsRoute,
+  ContactRoute: ContactRoute,
+  LabRoute: LabRoute,
+  PricingRoute: PricingRoute,
+  SyllabusRoute: SyllabusRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
