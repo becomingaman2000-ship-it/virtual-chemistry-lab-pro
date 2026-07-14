@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SyllabusRouteImport } from './routes/syllabus'
 import { Route as PricingRouteImport } from './routes/pricing'
+import { Route as PeriodicTableRouteImport } from './routes/periodic-table'
 import { Route as LabRouteImport } from './routes/lab'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as ChemicalsRouteImport } from './routes/chemicals'
@@ -26,6 +27,11 @@ const SyllabusRoute = SyllabusRouteImport.update({
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
   path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PeriodicTableRoute = PeriodicTableRouteImport.update({
+  id: '/periodic-table',
+  path: '/periodic-table',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LabRoute = LabRouteImport.update({
@@ -66,6 +72,7 @@ export interface FileRoutesByFullPath {
   '/chemicals': typeof ChemicalsRoute
   '/contact': typeof ContactRoute
   '/lab': typeof LabRoute
+  '/periodic-table': typeof PeriodicTableRoute
   '/pricing': typeof PricingRoute
   '/syllabus': typeof SyllabusRoute
 }
@@ -76,6 +83,7 @@ export interface FileRoutesByTo {
   '/chemicals': typeof ChemicalsRoute
   '/contact': typeof ContactRoute
   '/lab': typeof LabRoute
+  '/periodic-table': typeof PeriodicTableRoute
   '/pricing': typeof PricingRoute
   '/syllabus': typeof SyllabusRoute
 }
@@ -87,6 +95,7 @@ export interface FileRoutesById {
   '/chemicals': typeof ChemicalsRoute
   '/contact': typeof ContactRoute
   '/lab': typeof LabRoute
+  '/periodic-table': typeof PeriodicTableRoute
   '/pricing': typeof PricingRoute
   '/syllabus': typeof SyllabusRoute
 }
@@ -99,6 +108,7 @@ export interface FileRouteTypes {
     | '/chemicals'
     | '/contact'
     | '/lab'
+    | '/periodic-table'
     | '/pricing'
     | '/syllabus'
   fileRoutesByTo: FileRoutesByTo
@@ -109,6 +119,7 @@ export interface FileRouteTypes {
     | '/chemicals'
     | '/contact'
     | '/lab'
+    | '/periodic-table'
     | '/pricing'
     | '/syllabus'
   id:
@@ -119,6 +130,7 @@ export interface FileRouteTypes {
     | '/chemicals'
     | '/contact'
     | '/lab'
+    | '/periodic-table'
     | '/pricing'
     | '/syllabus'
   fileRoutesById: FileRoutesById
@@ -130,6 +142,7 @@ export interface RootRouteChildren {
   ChemicalsRoute: typeof ChemicalsRoute
   ContactRoute: typeof ContactRoute
   LabRoute: typeof LabRoute
+  PeriodicTableRoute: typeof PeriodicTableRoute
   PricingRoute: typeof PricingRoute
   SyllabusRoute: typeof SyllabusRoute
 }
@@ -148,6 +161,13 @@ declare module '@tanstack/react-router' {
       path: '/pricing'
       fullPath: '/pricing'
       preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/periodic-table': {
+      id: '/periodic-table'
+      path: '/periodic-table'
+      fullPath: '/periodic-table'
+      preLoaderRoute: typeof PeriodicTableRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/lab': {
@@ -202,6 +222,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChemicalsRoute: ChemicalsRoute,
   ContactRoute: ContactRoute,
   LabRoute: LabRoute,
+  PeriodicTableRoute: PeriodicTableRoute,
   PricingRoute: PricingRoute,
   SyllabusRoute: SyllabusRoute,
 }

@@ -79,8 +79,8 @@ function PeriodicTablePage() {
           })}
 
           {/* Lanthanide/Actinide placeholders */}
-          <div style={{ gridColumn: 3, gridRow: 6 }} className="aspect-square rounded-md bg-[color:var(--color-lanthanide,#d4a373)] text-center text-[9px] flex items-center justify-center text-black/70" >57-71</div>
-          <div style={{ gridColumn: 3, gridRow: 7 }} className="aspect-square rounded-md text-center text-[9px] flex items-center justify-center text-black/70" style={{ background: "#c084fc" }}>89-103</div>
+          <div style={{ gridColumn: 3, gridRow: 6, background: "#d4a373" }} className="aspect-square rounded-md text-center text-[9px] flex items-center justify-center text-black/70">57-71</div>
+          <div style={{ gridColumn: 3, gridRow: 7, background: "#c084fc" }} className="aspect-square rounded-md text-center text-[9px] flex items-center justify-center text-black/70">89-103</div>
         </div>
 
         <div className="mt-4 grid gap-[3px]" style={{ gridTemplateColumns: "repeat(15, minmax(0, 1fr))" }}>
