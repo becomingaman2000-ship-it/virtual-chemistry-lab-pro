@@ -15,6 +15,7 @@ import { Route as PeriodicTableRouteImport } from './routes/periodic-table'
 import { Route as LabRouteImport } from './routes/lab'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as ChemicalsRouteImport } from './routes/chemicals'
+import { Route as AtomBuilderRouteImport } from './routes/atom-builder'
 import { Route as ApparatusRouteImport } from './routes/apparatus'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
@@ -49,6 +50,11 @@ const ChemicalsRoute = ChemicalsRouteImport.update({
   path: '/chemicals',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AtomBuilderRoute = AtomBuilderRouteImport.update({
+  id: '/atom-builder',
+  path: '/atom-builder',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApparatusRoute = ApparatusRouteImport.update({
   id: '/apparatus',
   path: '/apparatus',
@@ -69,6 +75,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/apparatus': typeof ApparatusRoute
+  '/atom-builder': typeof AtomBuilderRoute
   '/chemicals': typeof ChemicalsRoute
   '/contact': typeof ContactRoute
   '/lab': typeof LabRoute
@@ -80,6 +87,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/apparatus': typeof ApparatusRoute
+  '/atom-builder': typeof AtomBuilderRoute
   '/chemicals': typeof ChemicalsRoute
   '/contact': typeof ContactRoute
   '/lab': typeof LabRoute
@@ -92,6 +100,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/apparatus': typeof ApparatusRoute
+  '/atom-builder': typeof AtomBuilderRoute
   '/chemicals': typeof ChemicalsRoute
   '/contact': typeof ContactRoute
   '/lab': typeof LabRoute
@@ -105,6 +114,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/apparatus'
+    | '/atom-builder'
     | '/chemicals'
     | '/contact'
     | '/lab'
@@ -116,6 +126,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/apparatus'
+    | '/atom-builder'
     | '/chemicals'
     | '/contact'
     | '/lab'
@@ -127,6 +138,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/apparatus'
+    | '/atom-builder'
     | '/chemicals'
     | '/contact'
     | '/lab'
@@ -139,6 +151,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   ApparatusRoute: typeof ApparatusRoute
+  AtomBuilderRoute: typeof AtomBuilderRoute
   ChemicalsRoute: typeof ChemicalsRoute
   ContactRoute: typeof ContactRoute
   LabRoute: typeof LabRoute
@@ -191,6 +204,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChemicalsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/atom-builder': {
+      id: '/atom-builder'
+      path: '/atom-builder'
+      fullPath: '/atom-builder'
+      preLoaderRoute: typeof AtomBuilderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/apparatus': {
       id: '/apparatus'
       path: '/apparatus'
@@ -219,6 +239,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   ApparatusRoute: ApparatusRoute,
+  AtomBuilderRoute: AtomBuilderRoute,
   ChemicalsRoute: ChemicalsRoute,
   ContactRoute: ContactRoute,
   LabRoute: LabRoute,
