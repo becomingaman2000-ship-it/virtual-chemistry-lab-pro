@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SyllabusRouteImport } from './routes/syllabus'
+import { Route as StructuresRouteImport } from './routes/structures'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PeriodicTableRouteImport } from './routes/periodic-table'
 import { Route as LabRouteImport } from './routes/lab'
@@ -23,6 +24,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const SyllabusRoute = SyllabusRouteImport.update({
   id: '/syllabus',
   path: '/syllabus',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StructuresRoute = StructuresRouteImport.update({
+  id: '/structures',
+  path: '/structures',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PricingRoute = PricingRouteImport.update({
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/lab': typeof LabRoute
   '/periodic-table': typeof PeriodicTableRoute
   '/pricing': typeof PricingRoute
+  '/structures': typeof StructuresRoute
   '/syllabus': typeof SyllabusRoute
 }
 export interface FileRoutesByTo {
@@ -93,6 +100,7 @@ export interface FileRoutesByTo {
   '/lab': typeof LabRoute
   '/periodic-table': typeof PeriodicTableRoute
   '/pricing': typeof PricingRoute
+  '/structures': typeof StructuresRoute
   '/syllabus': typeof SyllabusRoute
 }
 export interface FileRoutesById {
@@ -106,6 +114,7 @@ export interface FileRoutesById {
   '/lab': typeof LabRoute
   '/periodic-table': typeof PeriodicTableRoute
   '/pricing': typeof PricingRoute
+  '/structures': typeof StructuresRoute
   '/syllabus': typeof SyllabusRoute
 }
 export interface FileRouteTypes {
@@ -120,6 +129,7 @@ export interface FileRouteTypes {
     | '/lab'
     | '/periodic-table'
     | '/pricing'
+    | '/structures'
     | '/syllabus'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -132,6 +142,7 @@ export interface FileRouteTypes {
     | '/lab'
     | '/periodic-table'
     | '/pricing'
+    | '/structures'
     | '/syllabus'
   id:
     | '__root__'
@@ -144,6 +155,7 @@ export interface FileRouteTypes {
     | '/lab'
     | '/periodic-table'
     | '/pricing'
+    | '/structures'
     | '/syllabus'
   fileRoutesById: FileRoutesById
 }
@@ -157,6 +169,7 @@ export interface RootRouteChildren {
   LabRoute: typeof LabRoute
   PeriodicTableRoute: typeof PeriodicTableRoute
   PricingRoute: typeof PricingRoute
+  StructuresRoute: typeof StructuresRoute
   SyllabusRoute: typeof SyllabusRoute
 }
 
@@ -167,6 +180,13 @@ declare module '@tanstack/react-router' {
       path: '/syllabus'
       fullPath: '/syllabus'
       preLoaderRoute: typeof SyllabusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/structures': {
+      id: '/structures'
+      path: '/structures'
+      fullPath: '/structures'
+      preLoaderRoute: typeof StructuresRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pricing': {
@@ -245,6 +265,7 @@ const rootRouteChildren: RootRouteChildren = {
   LabRoute: LabRoute,
   PeriodicTableRoute: PeriodicTableRoute,
   PricingRoute: PricingRoute,
+  StructuresRoute: StructuresRoute,
   SyllabusRoute: SyllabusRoute,
 }
 export const routeTree = rootRouteImport

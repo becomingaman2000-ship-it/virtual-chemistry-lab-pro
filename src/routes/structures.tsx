@@ -107,7 +107,7 @@ const MOLECULES: Mol[] = [
   },
 ];
 
-export default function StructuresPage() {
+function StructuresPage() {
   const [sel, setSel] = useState<Mol>(MOLECULES[0]);
   const [rot, setRot] = useState(0);
 
