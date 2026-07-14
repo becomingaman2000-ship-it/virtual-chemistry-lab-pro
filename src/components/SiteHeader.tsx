@@ -1,22 +1,26 @@
 import { Link } from "@tanstack/react-router";
-import { Moon, Sun, Menu, X } from "lucide-react";
+import { Moon, Sun, Menu, X, Globe } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AuroraLogo } from "./AuroraLogo";
 import { useTheme } from "./ThemeProvider";
+import { useI18n, LANGUAGES, type Lang } from "@/lib/i18n";
 
 const nav = [
-  { to: "/", label: "Home" },
-  { to: "/lab", label: "Lab" },
-  { to: "/apparatus", label: "Apparatus" },
-  { to: "/chemicals", label: "Chemicals" },
-  { to: "/syllabus", label: "Syllabus" },
-  { to: "/pricing", label: "Pricing" },
-];
+  { to: "/", key: "nav.home" },
+  { to: "/lab", key: "nav.lab" },
+  { to: "/periodic-table", key: "nav.periodic" },
+  { to: "/atom-builder", key: "nav.atomBuilder" },
+  { to: "/structures", key: "nav.structures" },
+  { to: "/chemicals", key: "nav.chemicals" },
+  { to: "/pricing", key: "nav.pricing" },
+] as const;
 
 export function SiteHeader() {
   const { theme, toggle } = useTheme();
+  const { t, lang, setLang } = useI18n();
   const [open, setOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-50 px-4 pt-4">
@@ -33,12 +37,39 @@ export function SiteHeader() {
               className="rounded-full px-3.5 py-1.5 text-sm text-foreground/75 transition hover:bg-foreground/5 hover:text-foreground"
               activeProps={{ className: "bg-foreground/8 text-foreground font-medium" }}
             >
-              {n.label}
+              {t(n.key)}
             </Link>
           ))}
         </nav>
 
         <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              onClick={() => setLangOpen((v) => !v)}
+              aria-label="Language"
+              className="grid h-9 w-9 place-items-center rounded-full border border-border/60 bg-background/40 text-foreground transition hover:bg-foreground/5"
+            >
+              <Globe size={16} />
+            </button>
+            <AnimatePresence>
+              {langOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                  className="glass absolute right-0 mt-2 w-40 overflow-hidden rounded-2xl p-1 z-50"
+                >
+                  {LANGUAGES.map((l) => (
+                    <button
+                      key={l.code}
+                      onClick={() => { setLang(l.code as Lang); setLangOpen(false); }}
+                      className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm ${lang === l.code ? "bg-foreground/10 font-medium" : "hover:bg-foreground/5"}`}
+                    >
+                      <span>{l.flag}</span>{l.label}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           <button
             onClick={toggle}
             aria-label="Toggle theme"
@@ -50,7 +81,7 @@ export function SiteHeader() {
             to="/lab"
             className="hidden rounded-full bg-navy px-4 py-2 text-sm font-medium text-peach shadow-elegant transition hover:opacity-90 dark:bg-turquoise dark:text-charcoal md:inline-flex"
           >
-            Launch Lab
+            {t("nav.launch")}
           </Link>
           <button
             onClick={() => setOpen((v) => !v)}
@@ -77,7 +108,7 @@ export function SiteHeader() {
                 onClick={() => setOpen(false)}
                 className="block rounded-lg px-3 py-2 text-sm hover:bg-foreground/5"
               >
-                {n.label}
+                {t(n.key)}
               </Link>
             ))}
           </motion.div>

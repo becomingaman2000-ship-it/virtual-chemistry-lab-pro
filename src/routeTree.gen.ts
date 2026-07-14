@@ -10,10 +10,13 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SyllabusRouteImport } from './routes/syllabus'
+import { Route as StructuresRouteImport } from './routes/structures'
 import { Route as PricingRouteImport } from './routes/pricing'
+import { Route as PeriodicTableRouteImport } from './routes/periodic-table'
 import { Route as LabRouteImport } from './routes/lab'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as ChemicalsRouteImport } from './routes/chemicals'
+import { Route as AtomBuilderRouteImport } from './routes/atom-builder'
 import { Route as ApparatusRouteImport } from './routes/apparatus'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
@@ -23,9 +26,19 @@ const SyllabusRoute = SyllabusRouteImport.update({
   path: '/syllabus',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StructuresRoute = StructuresRouteImport.update({
+  id: '/structures',
+  path: '/structures',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
   path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PeriodicTableRoute = PeriodicTableRouteImport.update({
+  id: '/periodic-table',
+  path: '/periodic-table',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LabRoute = LabRouteImport.update({
@@ -41,6 +54,11 @@ const ContactRoute = ContactRouteImport.update({
 const ChemicalsRoute = ChemicalsRouteImport.update({
   id: '/chemicals',
   path: '/chemicals',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AtomBuilderRoute = AtomBuilderRouteImport.update({
+  id: '/atom-builder',
+  path: '/atom-builder',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApparatusRoute = ApparatusRouteImport.update({
@@ -63,20 +81,26 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/apparatus': typeof ApparatusRoute
+  '/atom-builder': typeof AtomBuilderRoute
   '/chemicals': typeof ChemicalsRoute
   '/contact': typeof ContactRoute
   '/lab': typeof LabRoute
+  '/periodic-table': typeof PeriodicTableRoute
   '/pricing': typeof PricingRoute
+  '/structures': typeof StructuresRoute
   '/syllabus': typeof SyllabusRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/apparatus': typeof ApparatusRoute
+  '/atom-builder': typeof AtomBuilderRoute
   '/chemicals': typeof ChemicalsRoute
   '/contact': typeof ContactRoute
   '/lab': typeof LabRoute
+  '/periodic-table': typeof PeriodicTableRoute
   '/pricing': typeof PricingRoute
+  '/structures': typeof StructuresRoute
   '/syllabus': typeof SyllabusRoute
 }
 export interface FileRoutesById {
@@ -84,10 +108,13 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/apparatus': typeof ApparatusRoute
+  '/atom-builder': typeof AtomBuilderRoute
   '/chemicals': typeof ChemicalsRoute
   '/contact': typeof ContactRoute
   '/lab': typeof LabRoute
+  '/periodic-table': typeof PeriodicTableRoute
   '/pricing': typeof PricingRoute
+  '/structures': typeof StructuresRoute
   '/syllabus': typeof SyllabusRoute
 }
 export interface FileRouteTypes {
@@ -96,30 +123,39 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/apparatus'
+    | '/atom-builder'
     | '/chemicals'
     | '/contact'
     | '/lab'
+    | '/periodic-table'
     | '/pricing'
+    | '/structures'
     | '/syllabus'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/about'
     | '/apparatus'
+    | '/atom-builder'
     | '/chemicals'
     | '/contact'
     | '/lab'
+    | '/periodic-table'
     | '/pricing'
+    | '/structures'
     | '/syllabus'
   id:
     | '__root__'
     | '/'
     | '/about'
     | '/apparatus'
+    | '/atom-builder'
     | '/chemicals'
     | '/contact'
     | '/lab'
+    | '/periodic-table'
     | '/pricing'
+    | '/structures'
     | '/syllabus'
   fileRoutesById: FileRoutesById
 }
@@ -127,10 +163,13 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   ApparatusRoute: typeof ApparatusRoute
+  AtomBuilderRoute: typeof AtomBuilderRoute
   ChemicalsRoute: typeof ChemicalsRoute
   ContactRoute: typeof ContactRoute
   LabRoute: typeof LabRoute
+  PeriodicTableRoute: typeof PeriodicTableRoute
   PricingRoute: typeof PricingRoute
+  StructuresRoute: typeof StructuresRoute
   SyllabusRoute: typeof SyllabusRoute
 }
 
@@ -143,11 +182,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SyllabusRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/structures': {
+      id: '/structures'
+      path: '/structures'
+      fullPath: '/structures'
+      preLoaderRoute: typeof StructuresRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pricing': {
       id: '/pricing'
       path: '/pricing'
       fullPath: '/pricing'
       preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/periodic-table': {
+      id: '/periodic-table'
+      path: '/periodic-table'
+      fullPath: '/periodic-table'
+      preLoaderRoute: typeof PeriodicTableRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/lab': {
@@ -169,6 +222,13 @@ declare module '@tanstack/react-router' {
       path: '/chemicals'
       fullPath: '/chemicals'
       preLoaderRoute: typeof ChemicalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/atom-builder': {
+      id: '/atom-builder'
+      path: '/atom-builder'
+      fullPath: '/atom-builder'
+      preLoaderRoute: typeof AtomBuilderRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/apparatus': {
@@ -199,22 +259,15 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   ApparatusRoute: ApparatusRoute,
+  AtomBuilderRoute: AtomBuilderRoute,
   ChemicalsRoute: ChemicalsRoute,
   ContactRoute: ContactRoute,
   LabRoute: LabRoute,
+  PeriodicTableRoute: PeriodicTableRoute,
   PricingRoute: PricingRoute,
+  StructuresRoute: StructuresRoute,
   SyllabusRoute: SyllabusRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
