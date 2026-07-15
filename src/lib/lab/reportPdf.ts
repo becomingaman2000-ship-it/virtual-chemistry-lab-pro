@@ -122,12 +122,12 @@ export async function generateReportPdf(input: ReportInput): Promise<Uint8Array>
 
   // Aim
   cur = heading(cur, doc, "Aim", bold);
-  cur = drawText(cur, doc, input.experiment.aim || input.experiment.title, font, 10);
+  cur = drawText(cur, doc, input.experiment.objective || input.experiment.title, font, 10);
 
   // Apparatus & chemicals
-  if (input.experiment.requiredApparatusIds?.length) {
+  if (input.experiment.materials?.length) {
     cur = heading(cur, doc, "Apparatus", bold);
-    cur = drawText(cur, doc, input.experiment.requiredApparatusIds.join(", "), font, 10);
+    cur = drawText(cur, doc, input.experiment.materials.join(", "), font, 10);
   }
   if (input.experiment.requiredChemicalIds?.length) {
     cur = heading(cur, doc, "Chemicals / Reagents", bold);
