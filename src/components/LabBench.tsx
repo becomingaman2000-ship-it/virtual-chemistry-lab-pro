@@ -32,6 +32,7 @@ import { COMPLETE_SYLLABUS_EXPERIMENTS, type SyllabusExperiment } from "@/lib/la
 import { evaluateReaction, type ContainerState, type ReactionResult } from "@/lib/lab/dwsimEngine";
 import { PDF_CATEGORY_LABELS, metaFor, fitsLevel, type PdfCategory } from "@/lib/lab/experimentMeta";
 import { SYLLABI, type Syllabus } from "@/data/syllabi";
+import { generateReportPdf, downloadReportPdf } from "@/lib/lab/reportPdf";
 
 /* ============================================================
    Types
@@ -278,6 +279,36 @@ export function LabBench() {
     percent: number; grade: string; band: string;
     correct: { label: string }[]; missed: { label: string }[];
   }>(null);
+  const [student, setStudent] = useState({ name: "", level: "", date: new Date().toISOString().slice(0, 10) });
+  const [observations, setObservations] = useState<string[]>([]);
+  const [obsDraft, setObsDraft] = useState("");
+  const [pdfBusy, setPdfBusy] = useState(false);
+
+  const downloadPdf = async () => {
+    if (!report) return;
+    setPdfBusy(true);
+    try {
+      const bytes = await generateReportPdf({
+        student,
+        syllabus: { id: currentSyllabus.id, board: currentSyllabus.board, level: currentSyllabus.level },
+        experiment,
+        percent: report.percent,
+        grade: report.grade,
+        band: report.band,
+        correct: report.correct,
+        missed: report.missed,
+        transcript: log.map((l) => ({ ts: l.ts, kind: l.kind, label: l.label })),
+        observations,
+      });
+      const safeTitle = experiment.title.replace(/[^a-z0-9]+/gi, "_").slice(0, 40);
+      downloadReportPdf(bytes, `ChemVM_Exp${experiment.id}_${safeTitle}.pdf`);
+    } catch (err) {
+      console.error("PDF generation failed", err);
+      setMessage("PDF generation failed — check console.");
+    } finally {
+      setPdfBusy(false);
+    }
+  };
 
   /* ---------------- animation loop ---------------- */
   useEffect(() => {
@@ -1240,12 +1271,63 @@ export function LabBench() {
                   </div>
                 </div>
               </div>
+              {/* Student info + observations for PDF */}
+              <div className="mt-5 grid gap-3 rounded-2xl border border-border/40 bg-background/40 p-4 md:grid-cols-3">
+                <label className="text-[11px]">
+                  <span className="mb-1 block font-semibold uppercase tracking-widest text-muted-foreground">Student name</span>
+                  <input value={student.name} onChange={(e) => setStudent({ ...student, name: e.target.value })}
+                    className="w-full rounded-lg border border-border/50 bg-background/60 px-2 py-1.5 text-[12.5px] outline-none focus:border-turquoise" />
+                </label>
+                <label className="text-[11px]">
+                  <span className="mb-1 block font-semibold uppercase tracking-widest text-muted-foreground">Level</span>
+                  <input value={student.level} onChange={(e) => setStudent({ ...student, level: e.target.value })}
+                    placeholder="e.g. IGCSE Year 11"
+                    className="w-full rounded-lg border border-border/50 bg-background/60 px-2 py-1.5 text-[12.5px] outline-none focus:border-turquoise" />
+                </label>
+                <label className="text-[11px]">
+                  <span className="mb-1 block font-semibold uppercase tracking-widest text-muted-foreground">Date</span>
+                  <input type="date" value={student.date} onChange={(e) => setStudent({ ...student, date: e.target.value })}
+                    className="w-full rounded-lg border border-border/50 bg-background/60 px-2 py-1.5 text-[12.5px] outline-none focus:border-turquoise" />
+                </label>
+                <div className="md:col-span-3">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Observations ({observations.length})</span>
+                    <button onClick={() => { if (obsDraft.trim()) { setObservations([...observations, obsDraft.trim()]); setObsDraft(""); } }}
+                      className="rounded-full border border-border/50 bg-background/60 px-2 py-0.5 text-[10px] font-medium hover:bg-foreground/5">
+                      + Add
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <input value={obsDraft} onChange={(e) => setObsDraft(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && obsDraft.trim()) { setObservations([...observations, obsDraft.trim()]); setObsDraft(""); } }}
+                      placeholder="Record what you observed…"
+                      className="flex-1 rounded-lg border border-border/50 bg-background/60 px-2 py-1.5 text-[12.5px] outline-none focus:border-turquoise" />
+                  </div>
+                  {observations.length > 0 && (
+                    <ul className="mt-2 max-h-24 space-y-1 overflow-y-auto text-[11.5px]">
+                      {observations.map((o, i) => (
+                        <li key={i} className="flex items-start justify-between gap-2 rounded-md bg-background/40 px-2 py-1">
+                          <span>• {o}</span>
+                          <button onClick={() => setObservations(observations.filter((_, k) => k !== i))} className="text-muted-foreground hover:text-aurora-red">×</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
               <div className="mt-6 flex justify-end gap-2">
                 <button
                   onClick={() => { setReport(null); resetTest(); }}
                   className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-background/60 px-4 py-2 text-[13px] font-medium hover:bg-foreground/5"
                 >
                   <RotateCw size={13} /> Start new attempt
+                </button>
+                <button
+                  onClick={downloadPdf}
+                  disabled={pdfBusy}
+                  className="inline-flex items-center gap-1 rounded-full border border-turquoise/50 bg-turquoise/10 px-4 py-2 text-[13px] font-semibold text-turquoise hover:bg-turquoise/20 disabled:opacity-50"
+                >
+                  {pdfBusy ? "Generating…" : "Download PDF"}
                 </button>
                 <button
                   onClick={() => setReport(null)}
