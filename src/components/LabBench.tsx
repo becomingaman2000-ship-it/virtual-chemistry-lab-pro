@@ -32,6 +32,7 @@ import { COMPLETE_SYLLABUS_EXPERIMENTS, type SyllabusExperiment } from "@/lib/la
 import { evaluateReaction, type ContainerState, type ReactionResult } from "@/lib/lab/dwsimEngine";
 import { PDF_CATEGORY_LABELS, metaFor, fitsLevel, type PdfCategory } from "@/lib/lab/experimentMeta";
 import { SYLLABI, type Syllabus } from "@/data/syllabi";
+import { generateReportPdf, downloadReportPdf } from "@/lib/lab/reportPdf";
 
 /* ============================================================
    Types
@@ -278,6 +279,36 @@ export function LabBench() {
     percent: number; grade: string; band: string;
     correct: { label: string }[]; missed: { label: string }[];
   }>(null);
+  const [student, setStudent] = useState({ name: "", level: "", date: new Date().toISOString().slice(0, 10) });
+  const [observations, setObservations] = useState<string[]>([]);
+  const [obsDraft, setObsDraft] = useState("");
+  const [pdfBusy, setPdfBusy] = useState(false);
+
+  const downloadPdf = async () => {
+    if (!report) return;
+    setPdfBusy(true);
+    try {
+      const bytes = await generateReportPdf({
+        student,
+        syllabus: { id: currentSyllabus.id, board: currentSyllabus.board, level: currentSyllabus.level },
+        experiment,
+        percent: report.percent,
+        grade: report.grade,
+        band: report.band,
+        correct: report.correct,
+        missed: report.missed,
+        transcript: log.map((l) => ({ ts: l.ts, kind: l.kind, label: l.label })),
+        observations,
+      });
+      const safeTitle = experiment.title.replace(/[^a-z0-9]+/gi, "_").slice(0, 40);
+      downloadReportPdf(bytes, `ChemVM_Exp${experiment.id}_${safeTitle}.pdf`);
+    } catch (err) {
+      console.error("PDF generation failed", err);
+      setMessage("PDF generation failed — check console.");
+    } finally {
+      setPdfBusy(false);
+    }
+  };
 
   /* ---------------- animation loop ---------------- */
   useEffect(() => {
