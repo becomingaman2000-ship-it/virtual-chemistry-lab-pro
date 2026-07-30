@@ -1251,6 +1251,7 @@ export function LabBench() {
               key={app.uid}
               app={app}
               selected={selectedUid === app.uid}
+              multi={selectedUids.length > 1 && selectedUids.includes(app.uid)}
               pourTarget={!!pourPending && pourPending !== app.uid && !!app.state}
               onPointerDown={(e) => onPieceDown(e, app)}
               onPointerMove={onPieceMove}
