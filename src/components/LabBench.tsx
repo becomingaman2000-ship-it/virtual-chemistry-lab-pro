@@ -542,26 +542,54 @@ export function LabBench() {
   useEffect(() => {
     const t = setInterval(() => {
       let dirty = false;
+      const destroyed: string[] = [];
+      let notice = "";
       for (const app of placedRef.current) {
-        if (!app.state) continue;
+        if (!app.state || app.broken) continue;
         // is any ignited burner within reach beneath?
-        const heated = placedRef.current.some((h) =>
+        const burner = placedRef.current.find((h) =>
           h.role === "heat" && h.ignited
           && Math.abs((h.x + h.item.width / 2) - (app.x + app.item.width / 2)) < 60
           && (h.y - (app.y + app.item.height)) < 40 && h.y > app.y);
+        const heated = !!burner;
+        const spec = burner ? flameSpec(burner.flame) : null;
         app.state.isHeated = heated;
-        if (heated && app.state.temperature < 220) {
-          app.state.temperature = Math.min(220, app.state.temperature + 3); dirty = true;
+        if (spec && app.state.temperature < spec.maxTemp) {
+          app.state.temperature = Math.min(spec.maxTemp, app.state.temperature + spec.ramp); dirty = true;
         } else if (!heated && app.state.temperature > 22) {
           app.state.temperature = Math.max(22, app.state.temperature - 1.5); dirty = true;
         }
+
+        // ---- physical consequences ----
+        const out = stepPhysics(
+          { state: app.state, shape: app.item.shape, flame: spec, sealed: !!app.sealed, dryTicks: app.dryTicks },
+          app.pressure,
+        );
+        app.dryTicks = out.dryTicks;
+        app.pressure = out.pressure;
+        app.burning = null;
+        for (const hz of out.hazards) {
+          dirty = true;
+          notice = hz.message;
+          if (hz.kind === "ignited") { app.burning = hz.burnColor ?? "#ff9a3d"; app.fx.foaming = false; }
+          if (hz.kind === "soot") app.sooty = true;
+          if (hz.kind === "frozen") app.fx.freezing = true;
+          if (hz.destroys) {
+            app.broken = true;
+            app.fx.exploding = hz.kind === "ruptured" ? 60 : 30;
+            destroyed.push(`${app.item.name}: ${hz.message}`);
+          }
+        }
+
         if (app.fx.exploding > 0) { app.fx.exploding -= 1; dirty = true; }
         if (dirty && Object.keys(app.state.substanceIds).length > 0) runReactionOn(app);
       }
       if (dirty) setPlaced((p) => [...p]);
+      if (notice) setMessage(notice);
+      for (const d of destroyed) pushLog({ kind: "observe", label: `⚠ ${d}` });
     }, 350);
     return () => clearInterval(t);
-  }, []);
+  }, [pushLog]);
 
   /* -------- spawn fx particles -------- */
   function spawnFx(app: PlacedApparatus, parts: Particle[]) {
