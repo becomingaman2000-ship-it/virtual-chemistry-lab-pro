@@ -1371,10 +1371,29 @@ export function LabBench() {
             <Wand2 size={12} /> Auto-setup: Retort+Tube
           </button>
           <div className="mx-1 h-6 w-px bg-border/50" />
+          <ActionBtn onClick={undo} icon={Undo2} label="Undo" disabled={!canUndo} />
+          <ActionBtn onClick={redo} icon={Redo2} label="Redo" disabled={!canRedo} />
+          <div className="mx-1 h-6 w-px bg-border/50" />
           <ActionBtn onClick={observeSelected} icon={ThermometerSun} label="Observe" />
           <ActionBtn onClick={() => selectedUid && chillContainer(selectedUid)} icon={Snowflake} label="Chill" disabled={!selectedUid} />
           <ActionBtn onClick={() => selectedUid && emptyContainer(selectedUid)} icon={Droplets} label="Empty" disabled={!selectedUid} />
           <ActionBtn onClick={() => selectedUid && beginPour(selectedUid)} icon={Wand2} label="Pour…" disabled={!selectedUid} />
+          <ActionBtn onClick={() => rotateSelected(45)} icon={RotateCw} label="Rotate" disabled={!selectedUid} />
+          <ActionBtn onClick={() => selectedUid && toggleSeal(selectedUid)} icon={Lock} label="Seal" disabled={!selectedUid} />
+          <ActionBtn
+            onClick={() => {
+              const burner = placedRef.current.find((a) => a.role === "heat");
+              if (burner) setFlamePicker(burner.uid);
+              else setMessage("Place a Bunsen burner, hot plate or water bath first.");
+            }}
+            icon={Flame}
+            label="Flame…"
+          />
+          {selectedUids.length > 1 && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/50 bg-amber-400/10 px-2.5 py-1 text-[11px] font-medium text-amber-500">
+              <Layers size={11} /> {selectedUids.length} selected
+            </span>
+          )}
           <div className="ml-auto flex items-center gap-1.5">
             {mode === "test" && (
               <>
