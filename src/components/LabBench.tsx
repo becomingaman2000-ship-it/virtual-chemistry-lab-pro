@@ -1279,12 +1279,15 @@ export function LabBench() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <CtxHeader label={app.item.name} />
-                {isC && <CtxItem icon={Flame} label="Heat (find burner)" onClick={() => { setMessage("Place under an ignited burner to heat."); setCtxMenu(null); }} />}
+                {isC && <CtxItem icon={Ruler} label="Measure & add reagent…" onClick={() => { setSidebarTab("chemicals"); setMessage("Pick a reagent in the sidebar — you'll be asked for the amount."); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={Snowflake} label="Chill (freeze)" onClick={() => { chillContainer(app.uid); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={Droplets} label="Empty container" onClick={() => { emptyContainer(app.uid); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={Wand2} label="Pour into…" onClick={() => { beginPour(app.uid); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={ThermometerSun} label="Observe" onClick={() => { observeSelected(); setCtxMenu(null); }} />}
+                {isC && <CtxItem icon={app.sealed ? Unlock : Lock} label={app.sealed ? "Remove stopper" : "Seal with stopper"} onClick={() => { toggleSeal(app.uid); setCtxMenu(null); }} />}
+                {isH && <CtxItem icon={Flame} label="Choose flame…" onClick={() => { setFlamePicker(app.uid); setCtxMenu(null); }} />}
                 {isH && <CtxItem icon={Flame} label={app.ignited ? "Extinguish" : "Ignite"} onClick={() => { setIgnite(app.uid, !app.ignited); setCtxMenu(null); }} />}
+                <CtxItem icon={RotateCw} label="Rotate 45° (R)" onClick={() => { rotateSelected(45); setCtxMenu(null); }} />
                 <div className="my-1 h-px bg-border/50" />
                 <CtxItem icon={Trash2} label="Remove from bench" danger onClick={() => { removePlaced(app.uid); setCtxMenu(null); }} />
               </div>
