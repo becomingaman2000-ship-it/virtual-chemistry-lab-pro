@@ -787,6 +787,7 @@ export function LabBench() {
 
   const autoSetup = (kind: "burner" | "retort") => {
     const wrap = benchRef.current; if (!wrap) return;
+    commit();
     const rect = wrap.getBoundingClientRect();
     const bx = rect.width / 2 - 80;
     const by = rect.height - 210;
@@ -828,8 +829,9 @@ export function LabBench() {
   };
 
   const clearBench = () => {
+    commit();
     setPlaced([]); setSelectedUid(null); particlesRef.current = []; pourRef.current = null; setPourPending(null);
-    setLog([]);
+    setSelectedUids([]); setLog([]);
     setMessage("Bench cleared.");
   };
 
