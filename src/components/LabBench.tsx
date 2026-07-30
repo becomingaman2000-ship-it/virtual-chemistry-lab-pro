@@ -278,8 +278,11 @@ export function LabBench() {
   const placedRef = useRef<PlacedApparatus[]>([]);
   useEffect(() => { placedRef.current = placed; }, [placed]);
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  const [selectedUids, setSelectedUids] = useState<string[]>([]);
   const [message, setMessage] = useState("Select apparatus and chemicals from the sidebar to begin.");
   const [log, setLog] = useState<LogEntry[]>([]);
+  const logRef = useRef<LogEntry[]>([]);
+  useEffect(() => { logRef.current = log; }, [log]);
   const particlesRef = useRef<Particle[]>([]);
   const pourRef = useRef<PourStream | null>(null);
   const [pourPending, setPourPending] = useState<string | null>(null); // source uid awaiting target
@@ -288,6 +291,70 @@ export function LabBench() {
   const pushLog = useCallback((entry: Omit<LogEntry, "ts">) => {
     setLog((l) => [{ ...entry, ts: Date.now() }, ...l].slice(0, 120));
   }, []);
+
+  /* -------- undo / redo history -------- */
+  interface Snapshot { placed: PlacedApparatus[]; log: LogEntry[] }
+  const historyRef = useRef<{ past: Snapshot[]; future: Snapshot[] }>({ past: [], future: [] });
+  const [histVer, setHistVer] = useState(0);
+
+  const takeSnapshot = useCallback((): Snapshot => ({
+    placed: placedRef.current.map((a) => ({
+      ...a,
+      fx: { ...a.fx },
+      state: a.state
+        ? { ...a.state, substanceIds: { ...a.state.substanceIds } }
+        : undefined,
+    })),
+    log: [...logRef.current],
+  }), []);
+
+  /** call immediately BEFORE any bench-mutating action */
+  const commit = useCallback(() => {
+    const h = historyRef.current;
+    h.past.push(takeSnapshot());
+    if (h.past.length > 60) h.past.shift();
+    h.future = [];
+    setHistVer((v) => v + 1);
+  }, [takeSnapshot]);
+
+  const applySnapshot = (s: Snapshot) => {
+    placedRef.current = s.placed;
+    setPlaced(s.placed);
+    setLog(s.log);
+    logRef.current = s.log;
+    particlesRef.current = [];
+    pourRef.current = null;
+  };
+
+  const undo = useCallback(() => {
+    const h = historyRef.current;
+    const prev = h.past.pop();
+    if (!prev) { setMessage("Nothing left to undo."); return; }
+    h.future.push(takeSnapshot());
+    applySnapshot(prev);
+    setMessage("Undid last action.");
+    setHistVer((v) => v + 1);
+  }, [takeSnapshot]);
+
+  const redo = useCallback(() => {
+    const h = historyRef.current;
+    const next = h.future.pop();
+    if (!next) { setMessage("Nothing left to redo."); return; }
+    h.past.push(takeSnapshot());
+    applySnapshot(next);
+    setMessage("Redid action.");
+    setHistVer((v) => v + 1);
+  }, [takeSnapshot]);
+
+  const canUndo = historyRef.current.past.length > 0;
+  const canRedo = historyRef.current.future.length > 0;
+  void histVer;
+
+  /* -------- measurement dialog -------- */
+  const [measure, setMeasure] = useState<null | { chem: ChemicalSubstance; amount: number }>(null);
+
+  /* -------- flame picker -------- */
+  const [flamePicker, setFlamePicker] = useState<string | null>(null); // burner uid
 
   /* -------- context menu -------- */
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; uid: string } | null>(null);
