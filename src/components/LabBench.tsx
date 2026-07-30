@@ -528,7 +528,8 @@ export function LabBench() {
       // burner flames (overlay above SVG)
       for (const app of placedRef.current) {
         if (app.role === "heat" && app.ignited) {
-          drawFlame(ctx, app.x + app.item.width / 2, app.y + 4, t, "#ff9a3d");
+          const spec = flameSpec(app.flame);
+          drawFlame(ctx, app.x + app.item.width / 2, app.y + 4, t, spec.color, spec.outerColor, spec.maxTemp);
         }
       }
 
@@ -619,19 +620,23 @@ export function LabBench() {
     }
   }
 
-  function drawFlame(ctx: CanvasRenderingContext2D, cx: number, cy: number, time: number, color: string) {
+  function drawFlame(
+    ctx: CanvasRenderingContext2D, cx: number, cy: number, time: number,
+    color: string, outer: string, maxTemp: number,
+  ) {
     const jitter = Math.sin(time * 12) * 3;
-    ctx.beginPath(); ctx.moveTo(cx - 12, cy);
-    ctx.quadraticCurveTo(cx - 6 + jitter, cy - 28, cx + jitter, cy - 58);
-    ctx.quadraticCurveTo(cx + 6 + jitter, cy - 28, cx + 12, cy);
+    const scale = Math.max(0.45, Math.min(1.2, maxTemp / 600));
+    ctx.beginPath(); ctx.moveTo(cx - 12 * scale, cy);
+    ctx.quadraticCurveTo(cx - 6 + jitter, cy - 28 * scale, cx + jitter, cy - 58 * scale);
+    ctx.quadraticCurveTo(cx + 6 + jitter, cy - 28 * scale, cx + 12 * scale, cy);
     ctx.closePath();
-    ctx.fillStyle = "rgba(90,140,255,0.55)"; ctx.fill();
-    ctx.beginPath(); ctx.moveTo(cx - 6, cy);
-    ctx.quadraticCurveTo(cx - 3, cy - 20, cx + jitter * 0.5, cy - 42);
-    ctx.quadraticCurveTo(cx + 3, cy - 20, cx + 6, cy);
+    ctx.fillStyle = outer; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx - 6 * scale, cy);
+    ctx.quadraticCurveTo(cx - 3, cy - 20 * scale, cx + jitter * 0.5, cy - 42 * scale);
+    ctx.quadraticCurveTo(cx + 3, cy - 20 * scale, cx + 6 * scale, cy);
     ctx.closePath();
     ctx.fillStyle = color; ctx.fill();
-    ctx.beginPath(); ctx.ellipse(cx, cy - 6, 3, 10, 0, 0, Math.PI * 2);
+    ctx.beginPath(); ctx.ellipse(cx, cy - 6 * scale, 3, 10 * scale, 0, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(255,250,220,0.95)"; ctx.fill();
   }
 
