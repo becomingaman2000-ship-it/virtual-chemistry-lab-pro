@@ -889,6 +889,11 @@ export function LabBench() {
     const px = e.clientX - rect.left, py = e.clientY - rect.top;
     dragRef.current = { uid: app.uid, dx: px - app.x, dy: py - app.y, lastX: px, lastY: py, moved: false };
     setSelectedUid(app.uid);
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      setSelectedUids((s) => (s.includes(app.uid) ? s.filter((u) => u !== app.uid) : [...s, app.uid]));
+    } else {
+      setSelectedUids([app.uid]);
+    }
     if (pourPending && pourPending !== app.uid) { completePour(app.uid); }
   };
   const onPieceMove = (e: React.PointerEvent) => {
@@ -915,7 +920,23 @@ export function LabBench() {
     const rect = benchRef.current!.getBoundingClientRect();
     setCtxMenu({ x: e.clientX - rect.left, y: e.clientY - rect.top, uid: app.uid });
     setSelectedUid(app.uid);
+    if (!selectedUids.includes(app.uid)) setSelectedUids([app.uid]);
   };
+
+  /* -------- keyboard shortcuts -------- */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+      else if (mod && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) { e.preventDefault(); redo(); }
+      else if (!mod && e.key.toLowerCase() === "r") { e.preventDefault(); rotateSelected(45); }
+      else if (e.key === "Escape") { setCtxMenu(null); setMeasure(null); setFlamePicker(null); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   /* ============================================================
      Derived UI data
