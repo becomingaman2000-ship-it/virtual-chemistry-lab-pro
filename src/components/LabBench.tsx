@@ -1436,6 +1436,148 @@ export function LabBench() {
       </section>
 
       {/* ================= REPORT MODAL ================= */}
+      {/* ---------- measured-amount dialog ---------- */}
+      <AnimatePresence>
+        {measure && (
+          <motion.div
+            className="fixed inset-0 z-[85] grid place-items-center bg-charcoal/55 p-4 backdrop-blur-md"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setMeasure(null)}
+          >
+            <motion.div
+              onClick={(e) => e.stopPropagation()}
+              initial={{ y: 24, opacity: 0, scale: 0.96 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 16, opacity: 0 }}
+              className="glass-strong w-full max-w-md rounded-3xl border border-border/50 p-5 shadow-elegant"
+            >
+              <div className="text-[10px] font-mono uppercase tracking-widest text-turquoise">
+                Measure before adding
+              </div>
+              <h3 className="mt-1 text-xl font-semibold leading-tight" style={{ fontFamily: "var(--font-display)" }}>
+                {measure.chem.name}
+              </h3>
+              <p className="mt-1 font-mono text-[12px] text-muted-foreground">{measure.chem.formula}</p>
+
+              {/* graduated visual */}
+              <div className="mt-4 flex items-end gap-4">
+                <div className="relative h-32 w-16 shrink-0 overflow-hidden rounded-b-xl border-2 border-border/60 bg-background/40">
+                  <div
+                    className="absolute inset-x-0 bottom-0 transition-all"
+                    style={{ height: `${Math.min(100, (measure.amount / 50) * 100)}%`, background: measure.chem.color }}
+                  />
+                  {[0.25, 0.5, 0.75].map((f) => (
+                    <div key={f} className="absolute inset-x-0 h-px bg-border/60" style={{ bottom: `${f * 100}%` }} />
+                  ))}
+                </div>
+                <div className="flex-1">
+                  <label className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Amount ({measurementUnit(measure.chem.state)})
+                  </label>
+                  <input
+                    type="range" min={0.5} max={50} step={0.5}
+                    value={measure.amount}
+                    onChange={(e) => setMeasure({ ...measure, amount: Number(e.target.value) })}
+                    className="mt-2 w-full accent-turquoise"
+                  />
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="number" min={0.1} step={0.1}
+                      value={measure.amount}
+                      onChange={(e) => setMeasure({ ...measure, amount: Math.max(0.1, Number(e.target.value)) })}
+                      className="w-24 rounded-lg border border-border/50 bg-background/60 px-2 py-1.5 text-[14px] font-semibold outline-none focus:border-turquoise"
+                    />
+                    <span className="text-[13px] text-muted-foreground">{measurementUnit(measure.chem.state)}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {MEASURE_PRESETS.map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setMeasure({ ...measure, amount: p })}
+                        className="rounded-full border border-border/50 bg-background/60 px-2 py-0.5 text-[11px] hover:bg-turquoise/15"
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {measure.chem.hazards?.length > 0 && (
+                <div className="mt-3 flex items-start gap-1.5 rounded-xl border border-aurora-red/40 bg-aurora-red/10 px-3 py-2 text-[11.5px] text-aurora-red">
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                  <span>{measure.chem.hazards.join(" · ")}</span>
+                </div>
+              )}
+
+              <div className="mt-5 flex justify-end gap-2">
+                <button onClick={() => setMeasure(null)}
+                  className="rounded-full border border-border/50 bg-background/60 px-4 py-2 text-[13px] font-medium hover:bg-foreground/5">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => { addChemical(measure.chem, measure.amount); setMeasure(null); }}
+                  className="rounded-full bg-navy px-4 py-2 text-[13px] font-semibold text-peach shadow hover:opacity-90 dark:bg-turquoise dark:text-charcoal"
+                >
+                  Add {measure.amount} {measurementUnit(measure.chem.state)}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------- flame picker ---------- */}
+      <AnimatePresence>
+        {flamePicker && (() => {
+          const burner = placed.find((a) => a.uid === flamePicker);
+          if (!burner) return null;
+          const options = flamesFor(burner.item.id);
+          return (
+            <motion.div
+              className="fixed inset-0 z-[85] grid place-items-center bg-charcoal/55 p-4 backdrop-blur-md"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setFlamePicker(null)}
+            >
+              <motion.div
+                onClick={(e) => e.stopPropagation()}
+                initial={{ y: 24, opacity: 0, scale: 0.96 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 16, opacity: 0 }}
+                className="glass-strong w-full max-w-lg rounded-3xl border border-border/50 p-5 shadow-elegant"
+              >
+                <div className="text-[10px] font-mono uppercase tracking-widest text-turquoise">Heat source</div>
+                <h3 className="mt-1 text-xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+                  {burner.item.name}
+                </h3>
+                <div className="mt-4 grid gap-2">
+                  {options.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => { setFlame(burner.uid, f.id); setFlamePicker(null); }}
+                      className={`flex items-start gap-3 rounded-2xl border px-3 py-2.5 text-left transition hover:border-turquoise/60 hover:bg-turquoise/10 ${
+                        burner.flame === f.id ? "border-turquoise/70 bg-turquoise/10" : "border-border/50 bg-background/50"
+                      }`}
+                    >
+                      <span className="mt-0.5 h-8 w-4 shrink-0 rounded-full"
+                        style={{ background: `linear-gradient(180deg, ${f.color}, ${f.outerColor})` }} />
+                      <span className="min-w-0">
+                        <span className="block text-[13.5px] font-semibold">{f.label}</span>
+                        <span className="block text-[11.5px] text-muted-foreground">{f.note}</span>
+                        <span className="mt-0.5 block font-mono text-[10.5px] text-turquoise">
+                          max {f.maxTemp} °C · {f.sooty ? "sooty" : "clean"} · {f.openFlame ? "open flame" : "no naked flame"}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {options.length < FLAMES.length && (
+                  <p className="mt-3 text-[11.5px] text-muted-foreground">
+                    Place a hot plate or water bath for flame-free heating of flammable solvents.
+                  </p>
+                )}
+              </motion.div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+
       <AnimatePresence>
         {report && (
           <motion.div
