@@ -197,6 +197,9 @@ function makePlaced(item: ApparatusItem, x: number, y: number, z: number): Place
   const uid = `${item.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   return {
     uid, item, role, x, y, z, swayAmp: 0, ignited: false,
+    flame: role === "heat" ? defaultFlameFor(item.id) : undefined,
+    rotation: 0, dryTicks: 0, pressure: 0, sealed: false, broken: false,
+    sooty: false, burning: null,
     containerType: ct,
     state: ct
       ? {
