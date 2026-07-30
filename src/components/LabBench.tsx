@@ -1092,7 +1092,7 @@ export function LabBench() {
                                 {items.map((c) => (
                                   <button
                                     key={c.id}
-                                    onClick={() => addChemical(c)}
+                                    onClick={() => requestChemical(c)}
                                     className="flex items-center gap-2 rounded-lg border border-border/40 bg-background/60 px-2 py-1.5 text-left transition hover:border-turquoise/60 hover:bg-turquoise/10"
                                     title={c.description}
                                   >
@@ -1313,7 +1313,7 @@ export function LabBench() {
                       {applicableChemicals.map((c) => (
                         <button
                           key={c.id}
-                          onClick={() => addChemical(c)}
+                          onClick={() => requestChemical(c)}
                           className="flex items-center gap-2 rounded-lg border border-border/40 bg-background/60 px-2 py-1.5 text-left text-[11px] hover:border-turquoise/60"
                         >
                           <span className="h-4 w-4 shrink-0 rounded border border-border/50" style={{ background: c.color }} />
