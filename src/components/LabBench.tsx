@@ -1583,10 +1583,11 @@ function CtxItem({
 
 /* ------------- Placed piece (SVG + liquid overlay) ------------- */
 function PlacedPiece({
-  app, selected, pourTarget, onPointerDown, onPointerMove, onPointerUp, onContextMenu,
+  app, selected, multi, pourTarget, onPointerDown, onPointerMove, onPointerUp, onContextMenu,
 }: {
   app: PlacedApparatus;
   selected: boolean;
+  multi: boolean;
   pourTarget: boolean;
   onPointerDown: (e: React.PointerEvent) => void;
   onPointerMove: (e: React.PointerEvent) => void;
@@ -1603,14 +1604,23 @@ function PlacedPiece({
 
   return (
     <div
-      className={`absolute cursor-grab select-none touch-none ${selected ? "ring-2 ring-turquoise/70 ring-offset-2 ring-offset-transparent" : ""} ${pourTarget ? "ring-2 ring-aurora-red/70 animate-pulse" : ""}`}
+      className={`absolute cursor-grab select-none touch-none ${selected ? "ring-2 ring-turquoise/70 ring-offset-2 ring-offset-transparent" : ""} ${multi ? "ring-2 ring-amber-400/80" : ""} ${pourTarget ? "ring-2 ring-aurora-red/70 animate-pulse" : ""}`}
       style={{ transform: `translate(${app.x}px, ${app.y}px)`, width: w, height: h + 4, zIndex: 10 + app.z }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onContextMenu={onContextMenu}
     >
-      <div className="relative" style={{ width: w, height: h }}>
+      <div
+        className="relative"
+        style={{
+          width: w, height: h,
+          transform: `rotate(${app.rotation}deg)${app.broken ? " skewX(4deg)" : ""}`,
+          transformOrigin: "50% 85%",
+          opacity: app.broken ? 0.55 : 1,
+          filter: app.broken ? "grayscale(0.6)" : undefined,
+        }}
+      >
         {/* shadow */}
         <div
           className="absolute -bottom-1 left-1/2 h-2 rounded-full bg-black/30 blur-sm"
@@ -1618,6 +1628,26 @@ function PlacedPiece({
         />
         {/* apparatus SVG */}
         <ApparatusSVG item={app.item} className="absolute inset-0" />
+        {/* soot deposit from a luminous flame */}
+        {app.sooty && (
+          <div
+            className="pointer-events-none absolute inset-x-2 bottom-1 h-1/4 rounded-b-full"
+            style={{ background: "radial-gradient(ellipse at 50% 100%, rgba(20,16,14,0.7), transparent 70%)" }}
+          />
+        )}
+        {/* combustion */}
+        {app.burning && (
+          <div
+            className="pointer-events-none absolute inset-x-0 -top-6 h-8 animate-pulse rounded-full blur-[2px]"
+            style={{ background: `radial-gradient(ellipse at 50% 100%, ${app.burning}, transparent 70%)` }}
+          />
+        )}
+        {/* pressure warning on a sealed heated vessel */}
+        {app.sealed && app.pressure > 0.15 && !app.broken && (
+          <div className="pointer-events-none absolute -top-3 left-1/2 h-1.5 w-12 -translate-x-1/2 overflow-hidden rounded-full bg-background/70">
+            <div className="h-full bg-aurora-red transition-all" style={{ width: `${Math.min(100, app.pressure * 100)}%` }} />
+          </div>
+        )}
         {/* liquid overlay for containers */}
         {state && fill > 0 && (
           <svg
