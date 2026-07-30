@@ -24,6 +24,9 @@ import {
   PanelLeftOpen, Play, RotateCw, Search, Snowflake, TestTube, ThermometerSun,
   Trash2, Wand2, X,
 } from "lucide-react";
+import {
+  Undo2, Redo2, Ruler, Lock, Unlock, AlertTriangle, Layers,
+} from "lucide-react";
 
 import { APPARATUS, CATEGORIES, type ApparatusItem, type ApparatusShape } from "@/data/apparatus";
 import { ApparatusSVG } from "@/components/ApparatusSVG";
@@ -33,6 +36,10 @@ import { evaluateReaction, type ContainerState, type ReactionResult } from "@/li
 import { PDF_CATEGORY_LABELS, metaFor, fitsLevel, type PdfCategory } from "@/lib/lab/experimentMeta";
 import { SYLLABI, type Syllabus } from "@/data/syllabi";
 import { generateReportPdf, downloadReportPdf } from "@/lib/lab/reportPdf";
+import {
+  FLAMES, flameSpec, flamesFor, defaultFlameFor, stepPhysics, vesselLimits,
+  measurementUnit, MEASURE_PRESETS, type FlameId, type Hazard,
+} from "@/lib/lab/physics";
 
 /* ============================================================
    Types
@@ -53,6 +60,14 @@ interface PlacedApparatus {
   z: number;
   swayAmp: number;                     // driven by drag velocity, decays
   ignited?: boolean;                   // burners / hotplates
+  flame?: FlameId;                     // which heat source this burner produces
+  rotation: number;                    // degrees
+  sealed?: boolean;                    // stoppered / closed system
+  broken?: boolean;                    // cracked or ruptured — unusable
+  sooty?: boolean;                     // soot deposit from a yellow flame
+  burning?: string | null;             // combustion flame colour
+  dryTicks: number;
+  pressure: number;
   state?: ContainerState;              // only if container
   fx: { boiling: boolean; freezing: boolean; foaming: boolean; crystallising: boolean; exploding: number; silverMirror: boolean };
   lastReaction?: ReactionResult | null;
