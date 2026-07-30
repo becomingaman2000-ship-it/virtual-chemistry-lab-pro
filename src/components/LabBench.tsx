@@ -24,6 +24,9 @@ import {
   PanelLeftOpen, Play, RotateCw, Search, Snowflake, TestTube, ThermometerSun,
   Trash2, Wand2, X,
 } from "lucide-react";
+import {
+  Undo2, Redo2, Ruler, Lock, Unlock, AlertTriangle, Layers,
+} from "lucide-react";
 
 import { APPARATUS, CATEGORIES, type ApparatusItem, type ApparatusShape } from "@/data/apparatus";
 import { ApparatusSVG } from "@/components/ApparatusSVG";
@@ -33,6 +36,10 @@ import { evaluateReaction, type ContainerState, type ReactionResult } from "@/li
 import { PDF_CATEGORY_LABELS, metaFor, fitsLevel, type PdfCategory } from "@/lib/lab/experimentMeta";
 import { SYLLABI, type Syllabus } from "@/data/syllabi";
 import { generateReportPdf, downloadReportPdf } from "@/lib/lab/reportPdf";
+import {
+  FLAMES, flameSpec, flamesFor, defaultFlameFor, stepPhysics, vesselLimits,
+  measurementUnit, MEASURE_PRESETS, type FlameId, type Hazard,
+} from "@/lib/lab/physics";
 
 /* ============================================================
    Types
@@ -53,6 +60,14 @@ interface PlacedApparatus {
   z: number;
   swayAmp: number;                     // driven by drag velocity, decays
   ignited?: boolean;                   // burners / hotplates
+  flame?: FlameId;                     // which heat source this burner produces
+  rotation: number;                    // degrees
+  sealed?: boolean;                    // stoppered / closed system
+  broken?: boolean;                    // cracked or ruptured — unusable
+  sooty?: boolean;                     // soot deposit from a yellow flame
+  burning?: string | null;             // combustion flame colour
+  dryTicks: number;
+  pressure: number;
   state?: ContainerState;              // only if container
   fx: { boiling: boolean; freezing: boolean; foaming: boolean; crystallising: boolean; exploding: number; silverMirror: boolean };
   lastReaction?: ReactionResult | null;
@@ -182,6 +197,9 @@ function makePlaced(item: ApparatusItem, x: number, y: number, z: number): Place
   const uid = `${item.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   return {
     uid, item, role, x, y, z, swayAmp: 0, ignited: false,
+    flame: role === "heat" ? defaultFlameFor(item.id) : undefined,
+    rotation: 0, dryTicks: 0, pressure: 0, sealed: false, broken: false,
+    sooty: false, burning: null,
     containerType: ct,
     state: ct
       ? {
@@ -260,8 +278,11 @@ export function LabBench() {
   const placedRef = useRef<PlacedApparatus[]>([]);
   useEffect(() => { placedRef.current = placed; }, [placed]);
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  const [selectedUids, setSelectedUids] = useState<string[]>([]);
   const [message, setMessage] = useState("Select apparatus and chemicals from the sidebar to begin.");
   const [log, setLog] = useState<LogEntry[]>([]);
+  const logRef = useRef<LogEntry[]>([]);
+  useEffect(() => { logRef.current = log; }, [log]);
   const particlesRef = useRef<Particle[]>([]);
   const pourRef = useRef<PourStream | null>(null);
   const [pourPending, setPourPending] = useState<string | null>(null); // source uid awaiting target
@@ -270,6 +291,70 @@ export function LabBench() {
   const pushLog = useCallback((entry: Omit<LogEntry, "ts">) => {
     setLog((l) => [{ ...entry, ts: Date.now() }, ...l].slice(0, 120));
   }, []);
+
+  /* -------- undo / redo history -------- */
+  interface Snapshot { placed: PlacedApparatus[]; log: LogEntry[] }
+  const historyRef = useRef<{ past: Snapshot[]; future: Snapshot[] }>({ past: [], future: [] });
+  const [histVer, setHistVer] = useState(0);
+
+  const takeSnapshot = useCallback((): Snapshot => ({
+    placed: placedRef.current.map((a) => ({
+      ...a,
+      fx: { ...a.fx },
+      state: a.state
+        ? { ...a.state, substanceIds: { ...a.state.substanceIds } }
+        : undefined,
+    })),
+    log: [...logRef.current],
+  }), []);
+
+  /** call immediately BEFORE any bench-mutating action */
+  const commit = useCallback(() => {
+    const h = historyRef.current;
+    h.past.push(takeSnapshot());
+    if (h.past.length > 60) h.past.shift();
+    h.future = [];
+    setHistVer((v) => v + 1);
+  }, [takeSnapshot]);
+
+  const applySnapshot = (s: Snapshot) => {
+    placedRef.current = s.placed;
+    setPlaced(s.placed);
+    setLog(s.log);
+    logRef.current = s.log;
+    particlesRef.current = [];
+    pourRef.current = null;
+  };
+
+  const undo = useCallback(() => {
+    const h = historyRef.current;
+    const prev = h.past.pop();
+    if (!prev) { setMessage("Nothing left to undo."); return; }
+    h.future.push(takeSnapshot());
+    applySnapshot(prev);
+    setMessage("Undid last action.");
+    setHistVer((v) => v + 1);
+  }, [takeSnapshot]);
+
+  const redo = useCallback(() => {
+    const h = historyRef.current;
+    const next = h.future.pop();
+    if (!next) { setMessage("Nothing left to redo."); return; }
+    h.past.push(takeSnapshot());
+    applySnapshot(next);
+    setMessage("Redid action.");
+    setHistVer((v) => v + 1);
+  }, [takeSnapshot]);
+
+  const canUndo = historyRef.current.past.length > 0;
+  const canRedo = historyRef.current.future.length > 0;
+  void histVer;
+
+  /* -------- measurement dialog -------- */
+  const [measure, setMeasure] = useState<null | { chem: ChemicalSubstance; amount: number }>(null);
+
+  /* -------- flame picker -------- */
+  const [flamePicker, setFlamePicker] = useState<string | null>(null); // burner uid
 
   /* -------- context menu -------- */
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; uid: string } | null>(null);
@@ -443,7 +528,8 @@ export function LabBench() {
       // burner flames (overlay above SVG)
       for (const app of placedRef.current) {
         if (app.role === "heat" && app.ignited) {
-          drawFlame(ctx, app.x + app.item.width / 2, app.y + 4, t, "#ff9a3d");
+          const spec = flameSpec(app.flame);
+          drawFlame(ctx, app.x + app.item.width / 2, app.y + 4, t, spec.color, spec.outerColor, spec.maxTemp);
         }
       }
 
@@ -457,26 +543,54 @@ export function LabBench() {
   useEffect(() => {
     const t = setInterval(() => {
       let dirty = false;
+      const destroyed: string[] = [];
+      let notice = "";
       for (const app of placedRef.current) {
-        if (!app.state) continue;
+        if (!app.state || app.broken) continue;
         // is any ignited burner within reach beneath?
-        const heated = placedRef.current.some((h) =>
+        const burner = placedRef.current.find((h) =>
           h.role === "heat" && h.ignited
           && Math.abs((h.x + h.item.width / 2) - (app.x + app.item.width / 2)) < 60
           && (h.y - (app.y + app.item.height)) < 40 && h.y > app.y);
+        const heated = !!burner;
+        const spec = burner ? flameSpec(burner.flame) : null;
         app.state.isHeated = heated;
-        if (heated && app.state.temperature < 220) {
-          app.state.temperature = Math.min(220, app.state.temperature + 3); dirty = true;
+        if (spec && app.state.temperature < spec.maxTemp) {
+          app.state.temperature = Math.min(spec.maxTemp, app.state.temperature + spec.ramp); dirty = true;
         } else if (!heated && app.state.temperature > 22) {
           app.state.temperature = Math.max(22, app.state.temperature - 1.5); dirty = true;
         }
+
+        // ---- physical consequences ----
+        const out = stepPhysics(
+          { state: app.state, shape: app.item.shape, flame: spec, sealed: !!app.sealed, dryTicks: app.dryTicks },
+          app.pressure,
+        );
+        app.dryTicks = out.dryTicks;
+        app.pressure = out.pressure;
+        app.burning = null;
+        for (const hz of out.hazards) {
+          dirty = true;
+          notice = hz.message;
+          if (hz.kind === "ignited") { app.burning = hz.burnColor ?? "#ff9a3d"; app.fx.foaming = false; }
+          if (hz.kind === "soot") app.sooty = true;
+          if (hz.kind === "frozen") app.fx.freezing = true;
+          if (hz.destroys) {
+            app.broken = true;
+            app.fx.exploding = hz.kind === "ruptured" ? 60 : 30;
+            destroyed.push(`${app.item.name}: ${hz.message}`);
+          }
+        }
+
         if (app.fx.exploding > 0) { app.fx.exploding -= 1; dirty = true; }
         if (dirty && Object.keys(app.state.substanceIds).length > 0) runReactionOn(app);
       }
       if (dirty) setPlaced((p) => [...p]);
+      if (notice) setMessage(notice);
+      for (const d of destroyed) pushLog({ kind: "observe", label: `⚠ ${d}` });
     }, 350);
     return () => clearInterval(t);
-  }, []);
+  }, [pushLog]);
 
   /* -------- spawn fx particles -------- */
   function spawnFx(app: PlacedApparatus, parts: Particle[]) {
@@ -506,19 +620,23 @@ export function LabBench() {
     }
   }
 
-  function drawFlame(ctx: CanvasRenderingContext2D, cx: number, cy: number, time: number, color: string) {
+  function drawFlame(
+    ctx: CanvasRenderingContext2D, cx: number, cy: number, time: number,
+    color: string, outer: string, maxTemp: number,
+  ) {
     const jitter = Math.sin(time * 12) * 3;
-    ctx.beginPath(); ctx.moveTo(cx - 12, cy);
-    ctx.quadraticCurveTo(cx - 6 + jitter, cy - 28, cx + jitter, cy - 58);
-    ctx.quadraticCurveTo(cx + 6 + jitter, cy - 28, cx + 12, cy);
+    const scale = Math.max(0.45, Math.min(1.2, maxTemp / 600));
+    ctx.beginPath(); ctx.moveTo(cx - 12 * scale, cy);
+    ctx.quadraticCurveTo(cx - 6 + jitter, cy - 28 * scale, cx + jitter, cy - 58 * scale);
+    ctx.quadraticCurveTo(cx + 6 + jitter, cy - 28 * scale, cx + 12 * scale, cy);
     ctx.closePath();
-    ctx.fillStyle = "rgba(90,140,255,0.55)"; ctx.fill();
-    ctx.beginPath(); ctx.moveTo(cx - 6, cy);
-    ctx.quadraticCurveTo(cx - 3, cy - 20, cx + jitter * 0.5, cy - 42);
-    ctx.quadraticCurveTo(cx + 3, cy - 20, cx + 6, cy);
+    ctx.fillStyle = outer; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx - 6 * scale, cy);
+    ctx.quadraticCurveTo(cx - 3, cy - 20 * scale, cx + jitter * 0.5, cy - 42 * scale);
+    ctx.quadraticCurveTo(cx + 3, cy - 20 * scale, cx + 6 * scale, cy);
     ctx.closePath();
     ctx.fillStyle = color; ctx.fill();
-    ctx.beginPath(); ctx.ellipse(cx, cy - 6, 3, 10, 0, 0, Math.PI * 2);
+    ctx.beginPath(); ctx.ellipse(cx, cy - 6 * scale, 3, 10 * scale, 0, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(255,250,220,0.95)"; ctx.fill();
   }
 
@@ -528,27 +646,33 @@ export function LabBench() {
 
   const addApparatus = (item: ApparatusItem) => {
     const wrap = benchRef.current; if (!wrap) return;
+    commit();
     const rect = wrap.getBoundingClientRect();
     const x = 80 + (placed.length * 40) % (rect.width - 200);
     const y = rect.height - 180 - item.height;
     const app = makePlaced(item, x, Math.max(20, y), placed.length);
     setPlaced((p) => [...p, app]);
     setSelectedUid(app.uid);
+    setSelectedUids([app.uid]);
     pushLog({ kind: "place", label: `Placed ${item.name}` });
     setMessage(`${item.name} placed. Right-click for actions.`);
   };
 
   const removePlaced = (uid: string) => {
+    commit();
     setPlaced((p) => p.filter((a) => a.uid !== uid));
+    setSelectedUids((s) => s.filter((u) => u !== uid));
     if (selectedUid === uid) setSelectedUid(null);
   };
 
   const emptyContainer = (uid: string) => {
     const app = placedRef.current.find((a) => a.uid === uid);
     if (!app?.state) return;
+    commit();
     app.state.substanceIds = {}; app.state.precipitate = null; app.state.bubblingGas = null;
     app.state.flameColor = null; app.state.color = "rgba(200,220,240,0.15)";
     app.state.pH = 7; app.state.currentVolume = 0;
+    app.burning = null; app.dryTicks = 0; app.pressure = 0;
     app.fx = { boiling: false, freezing: false, foaming: false, crystallising: false, exploding: 0, silverMirror: false };
     app.lastReaction = null;
     setPlaced((p) => [...p]);
@@ -556,9 +680,49 @@ export function LabBench() {
 
   const setIgnite = (uid: string, on: boolean) => {
     const app = placedRef.current.find((a) => a.uid === uid); if (!app) return;
+    commit();
     app.ignited = on;
     setPlaced((p) => [...p]);
-    pushLog({ kind: on ? "heat" : "cool", label: `${on ? "Ignited" : "Extinguished"} ${app.item.name}` });
+    pushLog({
+      kind: on ? "heat" : "cool",
+      label: on
+        ? `Ignited ${app.item.name} — ${flameSpec(app.flame).label}`
+        : `Extinguished ${app.item.name}`,
+    });
+  };
+
+  const setFlame = (uid: string, flame: FlameId) => {
+    const app = placedRef.current.find((a) => a.uid === uid); if (!app) return;
+    commit();
+    app.flame = flame;
+    app.ignited = true;
+    setPlaced((p) => [...p]);
+    const spec = flameSpec(flame);
+    pushLog({ kind: "heat", label: `Selected ${spec.label} (max ${spec.maxTemp} °C)` });
+    setMessage(spec.note);
+  };
+
+  const rotateSelected = (delta = 45) => {
+    const targets = selectedUids.length ? selectedUids : selectedUid ? [selectedUid] : [];
+    if (!targets.length) { setMessage("Select apparatus to rotate."); return; }
+    commit();
+    for (const uid of targets) {
+      const app = placedRef.current.find((a) => a.uid === uid);
+      if (app) app.rotation = (app.rotation + delta) % 360;
+    }
+    setPlaced((p) => [...p]);
+    pushLog({ kind: "connect", label: `Rotated ${targets.length} item(s) by ${delta}°` });
+  };
+
+  const toggleSeal = (uid: string) => {
+    const app = placedRef.current.find((a) => a.uid === uid); if (!app?.state) return;
+    commit();
+    app.sealed = !app.sealed;
+    setPlaced((p) => [...p]);
+    pushLog({ kind: "connect", label: `${app.sealed ? "Sealed" : "Unsealed"} ${app.item.name}` });
+    setMessage(app.sealed
+      ? "Vessel sealed — never heat a closed system, pressure will build."
+      : "Vessel opened to the atmosphere.");
   };
 
   const chillContainer = (uid: string) => {
@@ -569,18 +733,29 @@ export function LabBench() {
     setPlaced((p) => [...p]);
   };
 
-  const addChemical = (chem: ChemicalSubstance) => {
+  /** open the measured-amount dialog — nothing enters the vessel until it is confirmed */
+  const requestChemical = (chem: ChemicalSubstance) => {
     if (!selectedUid) { setMessage("Select a container on the bench first."); return; }
     const app = placedRef.current.find((a) => a.uid === selectedUid);
     if (!app?.state) { setMessage("That apparatus can't hold chemicals — select a beaker or tube."); return; }
-    app.state.substanceIds[chem.id] = (app.state.substanceIds[chem.id] || 0) + 5;
+    if (app.broken) { setMessage("That vessel is broken — remove it and place a new one."); return; }
+    setMeasure({ chem, amount: 10 });
+  };
+
+  const addChemical = (chem: ChemicalSubstance, amount: number) => {
+    if (!selectedUid) { setMessage("Select a container on the bench first."); return; }
+    const app = placedRef.current.find((a) => a.uid === selectedUid);
+    if (!app?.state) { setMessage("That apparatus can't hold chemicals — select a beaker or tube."); return; }
+    commit();
+    const unit = measurementUnit(chem.state);
+    app.state.substanceIds[chem.id] = (app.state.substanceIds[chem.id] || 0) + amount;
     const res = runReactionOn(app);
     if (res?.message) setMessage(res.message);
     pushLog({
       kind: res?.successExperimentId ? "reaction" : "add",
       label: res?.successExperimentId
-        ? `Added ${chem.name} · ✔ ${res.message}`
-        : `Added ${chem.name} to ${app.item.name}`,
+        ? `Measured ${amount} ${unit} ${chem.name} · ✔ ${res.message}`
+        : `Measured ${amount} ${unit} of ${chem.name} into ${app.item.name}`,
       experimentId: res?.successExperimentId,
     });
     setPlaced((p) => [...p]);
@@ -597,6 +772,7 @@ export function LabBench() {
     const to = placedRef.current.find((a) => a.uid === toUid);
     setPourPending(null);
     if (!from?.state || !to?.state || from.uid === to.uid) { setMessage("Pick a different container."); return; }
+    commit();
     // transfer half the substances
     const transfer: Record<string, number> = {};
     for (const [id, amt] of Object.entries(from.state.substanceIds)) {
@@ -616,6 +792,7 @@ export function LabBench() {
 
   const autoSetup = (kind: "burner" | "retort") => {
     const wrap = benchRef.current; if (!wrap) return;
+    commit();
     const rect = wrap.getBoundingClientRect();
     const bx = rect.width / 2 - 80;
     const by = rect.height - 210;
@@ -657,8 +834,9 @@ export function LabBench() {
   };
 
   const clearBench = () => {
+    commit();
     setPlaced([]); setSelectedUid(null); particlesRef.current = []; pourRef.current = null; setPourPending(null);
-    setLog([]);
+    setSelectedUids([]); setLog([]);
     setMessage("Bench cleared.");
   };
 
@@ -716,6 +894,11 @@ export function LabBench() {
     const px = e.clientX - rect.left, py = e.clientY - rect.top;
     dragRef.current = { uid: app.uid, dx: px - app.x, dy: py - app.y, lastX: px, lastY: py, moved: false };
     setSelectedUid(app.uid);
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      setSelectedUids((s) => (s.includes(app.uid) ? s.filter((u) => u !== app.uid) : [...s, app.uid]));
+    } else {
+      setSelectedUids([app.uid]);
+    }
     if (pourPending && pourPending !== app.uid) { completePour(app.uid); }
   };
   const onPieceMove = (e: React.PointerEvent) => {
@@ -742,7 +925,23 @@ export function LabBench() {
     const rect = benchRef.current!.getBoundingClientRect();
     setCtxMenu({ x: e.clientX - rect.left, y: e.clientY - rect.top, uid: app.uid });
     setSelectedUid(app.uid);
+    if (!selectedUids.includes(app.uid)) setSelectedUids([app.uid]);
   };
+
+  /* -------- keyboard shortcuts -------- */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+      else if (mod && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) { e.preventDefault(); redo(); }
+      else if (!mod && e.key.toLowerCase() === "r") { e.preventDefault(); rotateSelected(45); }
+      else if (e.key === "Escape") { setCtxMenu(null); setMeasure(null); setFlamePicker(null); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   /* ============================================================
      Derived UI data
@@ -921,7 +1120,7 @@ export function LabBench() {
                                 {items.map((c) => (
                                   <button
                                     key={c.id}
-                                    onClick={() => addChemical(c)}
+                                    onClick={() => requestChemical(c)}
                                     className="flex items-center gap-2 rounded-lg border border-border/40 bg-background/60 px-2 py-1.5 text-left transition hover:border-turquoise/60 hover:bg-turquoise/10"
                                     title={c.description}
                                   >
@@ -1057,6 +1256,7 @@ export function LabBench() {
               key={app.uid}
               app={app}
               selected={selectedUid === app.uid}
+              multi={selectedUids.length > 1 && selectedUids.includes(app.uid)}
               pourTarget={!!pourPending && pourPending !== app.uid && !!app.state}
               onPointerDown={(e) => onPieceDown(e, app)}
               onPointerMove={onPieceMove}
@@ -1084,12 +1284,15 @@ export function LabBench() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <CtxHeader label={app.item.name} />
-                {isC && <CtxItem icon={Flame} label="Heat (find burner)" onClick={() => { setMessage("Place under an ignited burner to heat."); setCtxMenu(null); }} />}
+                {isC && <CtxItem icon={Ruler} label="Measure & add reagent…" onClick={() => { setSidebarTab("chemicals"); setMessage("Pick a reagent in the sidebar — you'll be asked for the amount."); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={Snowflake} label="Chill (freeze)" onClick={() => { chillContainer(app.uid); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={Droplets} label="Empty container" onClick={() => { emptyContainer(app.uid); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={Wand2} label="Pour into…" onClick={() => { beginPour(app.uid); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={ThermometerSun} label="Observe" onClick={() => { observeSelected(); setCtxMenu(null); }} />}
+                {isC && <CtxItem icon={app.sealed ? Unlock : Lock} label={app.sealed ? "Remove stopper" : "Seal with stopper"} onClick={() => { toggleSeal(app.uid); setCtxMenu(null); }} />}
+                {isH && <CtxItem icon={Flame} label="Choose flame…" onClick={() => { setFlamePicker(app.uid); setCtxMenu(null); }} />}
                 {isH && <CtxItem icon={Flame} label={app.ignited ? "Extinguish" : "Ignite"} onClick={() => { setIgnite(app.uid, !app.ignited); setCtxMenu(null); }} />}
+                <CtxItem icon={RotateCw} label="Rotate 45° (R)" onClick={() => { rotateSelected(45); setCtxMenu(null); }} />
                 <div className="my-1 h-px bg-border/50" />
                 <CtxItem icon={Trash2} label="Remove from bench" danger onClick={() => { removePlaced(app.uid); setCtxMenu(null); }} />
               </div>
@@ -1142,7 +1345,7 @@ export function LabBench() {
                       {applicableChemicals.map((c) => (
                         <button
                           key={c.id}
-                          onClick={() => addChemical(c)}
+                          onClick={() => requestChemical(c)}
                           className="flex items-center gap-2 rounded-lg border border-border/40 bg-background/60 px-2 py-1.5 text-left text-[11px] hover:border-turquoise/60"
                         >
                           <span className="h-4 w-4 shrink-0 rounded border border-border/50" style={{ background: c.color }} />
@@ -1173,10 +1376,29 @@ export function LabBench() {
             <Wand2 size={12} /> Auto-setup: Retort+Tube
           </button>
           <div className="mx-1 h-6 w-px bg-border/50" />
+          <ActionBtn onClick={undo} icon={Undo2} label="Undo" disabled={!canUndo} />
+          <ActionBtn onClick={redo} icon={Redo2} label="Redo" disabled={!canRedo} />
+          <div className="mx-1 h-6 w-px bg-border/50" />
           <ActionBtn onClick={observeSelected} icon={ThermometerSun} label="Observe" />
           <ActionBtn onClick={() => selectedUid && chillContainer(selectedUid)} icon={Snowflake} label="Chill" disabled={!selectedUid} />
           <ActionBtn onClick={() => selectedUid && emptyContainer(selectedUid)} icon={Droplets} label="Empty" disabled={!selectedUid} />
           <ActionBtn onClick={() => selectedUid && beginPour(selectedUid)} icon={Wand2} label="Pour…" disabled={!selectedUid} />
+          <ActionBtn onClick={() => rotateSelected(45)} icon={RotateCw} label="Rotate" disabled={!selectedUid} />
+          <ActionBtn onClick={() => selectedUid && toggleSeal(selectedUid)} icon={Lock} label="Seal" disabled={!selectedUid} />
+          <ActionBtn
+            onClick={() => {
+              const burner = placedRef.current.find((a) => a.role === "heat");
+              if (burner) setFlamePicker(burner.uid);
+              else setMessage("Place a Bunsen burner, hot plate or water bath first.");
+            }}
+            icon={Flame}
+            label="Flame…"
+          />
+          {selectedUids.length > 1 && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/50 bg-amber-400/10 px-2.5 py-1 text-[11px] font-medium text-amber-500">
+              <Layers size={11} /> {selectedUids.length} selected
+            </span>
+          )}
           <div className="ml-auto flex items-center gap-1.5">
             {mode === "test" && (
               <>
@@ -1219,6 +1441,148 @@ export function LabBench() {
       </section>
 
       {/* ================= REPORT MODAL ================= */}
+      {/* ---------- measured-amount dialog ---------- */}
+      <AnimatePresence>
+        {measure && (
+          <motion.div
+            className="fixed inset-0 z-[85] grid place-items-center bg-charcoal/55 p-4 backdrop-blur-md"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setMeasure(null)}
+          >
+            <motion.div
+              onClick={(e) => e.stopPropagation()}
+              initial={{ y: 24, opacity: 0, scale: 0.96 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 16, opacity: 0 }}
+              className="glass-strong w-full max-w-md rounded-3xl border border-border/50 p-5 shadow-elegant"
+            >
+              <div className="text-[10px] font-mono uppercase tracking-widest text-turquoise">
+                Measure before adding
+              </div>
+              <h3 className="mt-1 text-xl font-semibold leading-tight" style={{ fontFamily: "var(--font-display)" }}>
+                {measure.chem.name}
+              </h3>
+              <p className="mt-1 font-mono text-[12px] text-muted-foreground">{measure.chem.formula}</p>
+
+              {/* graduated visual */}
+              <div className="mt-4 flex items-end gap-4">
+                <div className="relative h-32 w-16 shrink-0 overflow-hidden rounded-b-xl border-2 border-border/60 bg-background/40">
+                  <div
+                    className="absolute inset-x-0 bottom-0 transition-all"
+                    style={{ height: `${Math.min(100, (measure.amount / 50) * 100)}%`, background: measure.chem.color }}
+                  />
+                  {[0.25, 0.5, 0.75].map((f) => (
+                    <div key={f} className="absolute inset-x-0 h-px bg-border/60" style={{ bottom: `${f * 100}%` }} />
+                  ))}
+                </div>
+                <div className="flex-1">
+                  <label className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Amount ({measurementUnit(measure.chem.state)})
+                  </label>
+                  <input
+                    type="range" min={0.5} max={50} step={0.5}
+                    value={measure.amount}
+                    onChange={(e) => setMeasure({ ...measure, amount: Number(e.target.value) })}
+                    className="mt-2 w-full accent-turquoise"
+                  />
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="number" min={0.1} step={0.1}
+                      value={measure.amount}
+                      onChange={(e) => setMeasure({ ...measure, amount: Math.max(0.1, Number(e.target.value)) })}
+                      className="w-24 rounded-lg border border-border/50 bg-background/60 px-2 py-1.5 text-[14px] font-semibold outline-none focus:border-turquoise"
+                    />
+                    <span className="text-[13px] text-muted-foreground">{measurementUnit(measure.chem.state)}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {MEASURE_PRESETS.map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setMeasure({ ...measure, amount: p })}
+                        className="rounded-full border border-border/50 bg-background/60 px-2 py-0.5 text-[11px] hover:bg-turquoise/15"
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {measure.chem.hazards?.length > 0 && (
+                <div className="mt-3 flex items-start gap-1.5 rounded-xl border border-aurora-red/40 bg-aurora-red/10 px-3 py-2 text-[11.5px] text-aurora-red">
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                  <span>{measure.chem.hazards.join(" · ")}</span>
+                </div>
+              )}
+
+              <div className="mt-5 flex justify-end gap-2">
+                <button onClick={() => setMeasure(null)}
+                  className="rounded-full border border-border/50 bg-background/60 px-4 py-2 text-[13px] font-medium hover:bg-foreground/5">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => { addChemical(measure.chem, measure.amount); setMeasure(null); }}
+                  className="rounded-full bg-navy px-4 py-2 text-[13px] font-semibold text-peach shadow hover:opacity-90 dark:bg-turquoise dark:text-charcoal"
+                >
+                  Add {measure.amount} {measurementUnit(measure.chem.state)}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------- flame picker ---------- */}
+      <AnimatePresence>
+        {flamePicker && (() => {
+          const burner = placed.find((a) => a.uid === flamePicker);
+          if (!burner) return null;
+          const options = flamesFor(burner.item.id);
+          return (
+            <motion.div
+              className="fixed inset-0 z-[85] grid place-items-center bg-charcoal/55 p-4 backdrop-blur-md"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setFlamePicker(null)}
+            >
+              <motion.div
+                onClick={(e) => e.stopPropagation()}
+                initial={{ y: 24, opacity: 0, scale: 0.96 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 16, opacity: 0 }}
+                className="glass-strong w-full max-w-lg rounded-3xl border border-border/50 p-5 shadow-elegant"
+              >
+                <div className="text-[10px] font-mono uppercase tracking-widest text-turquoise">Heat source</div>
+                <h3 className="mt-1 text-xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+                  {burner.item.name}
+                </h3>
+                <div className="mt-4 grid gap-2">
+                  {options.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => { setFlame(burner.uid, f.id); setFlamePicker(null); }}
+                      className={`flex items-start gap-3 rounded-2xl border px-3 py-2.5 text-left transition hover:border-turquoise/60 hover:bg-turquoise/10 ${
+                        burner.flame === f.id ? "border-turquoise/70 bg-turquoise/10" : "border-border/50 bg-background/50"
+                      }`}
+                    >
+                      <span className="mt-0.5 h-8 w-4 shrink-0 rounded-full"
+                        style={{ background: `linear-gradient(180deg, ${f.color}, ${f.outerColor})` }} />
+                      <span className="min-w-0">
+                        <span className="block text-[13.5px] font-semibold">{f.label}</span>
+                        <span className="block text-[11.5px] text-muted-foreground">{f.note}</span>
+                        <span className="mt-0.5 block font-mono text-[10.5px] text-turquoise">
+                          max {f.maxTemp} °C · {f.sooty ? "sooty" : "clean"} · {f.openFlame ? "open flame" : "no naked flame"}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {options.length < FLAMES.length && (
+                  <p className="mt-3 text-[11.5px] text-muted-foreground">
+                    Place a hot plate or water bath for flame-free heating of flammable solvents.
+                  </p>
+                )}
+              </motion.div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+
       <AnimatePresence>
         {report && (
           <motion.div
@@ -1388,10 +1752,11 @@ function CtxItem({
 
 /* ------------- Placed piece (SVG + liquid overlay) ------------- */
 function PlacedPiece({
-  app, selected, pourTarget, onPointerDown, onPointerMove, onPointerUp, onContextMenu,
+  app, selected, multi, pourTarget, onPointerDown, onPointerMove, onPointerUp, onContextMenu,
 }: {
   app: PlacedApparatus;
   selected: boolean;
+  multi: boolean;
   pourTarget: boolean;
   onPointerDown: (e: React.PointerEvent) => void;
   onPointerMove: (e: React.PointerEvent) => void;
@@ -1408,14 +1773,23 @@ function PlacedPiece({
 
   return (
     <div
-      className={`absolute cursor-grab select-none touch-none ${selected ? "ring-2 ring-turquoise/70 ring-offset-2 ring-offset-transparent" : ""} ${pourTarget ? "ring-2 ring-aurora-red/70 animate-pulse" : ""}`}
+      className={`absolute cursor-grab select-none touch-none ${selected ? "ring-2 ring-turquoise/70 ring-offset-2 ring-offset-transparent" : ""} ${multi ? "ring-2 ring-amber-400/80" : ""} ${pourTarget ? "ring-2 ring-aurora-red/70 animate-pulse" : ""}`}
       style={{ transform: `translate(${app.x}px, ${app.y}px)`, width: w, height: h + 4, zIndex: 10 + app.z }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onContextMenu={onContextMenu}
     >
-      <div className="relative" style={{ width: w, height: h }}>
+      <div
+        className="relative"
+        style={{
+          width: w, height: h,
+          transform: `rotate(${app.rotation}deg)${app.broken ? " skewX(4deg)" : ""}`,
+          transformOrigin: "50% 85%",
+          opacity: app.broken ? 0.55 : 1,
+          filter: app.broken ? "grayscale(0.6)" : undefined,
+        }}
+      >
         {/* shadow */}
         <div
           className="absolute -bottom-1 left-1/2 h-2 rounded-full bg-black/30 blur-sm"
@@ -1423,6 +1797,26 @@ function PlacedPiece({
         />
         {/* apparatus SVG */}
         <ApparatusSVG item={app.item} className="absolute inset-0" />
+        {/* soot deposit from a luminous flame */}
+        {app.sooty && (
+          <div
+            className="pointer-events-none absolute inset-x-2 bottom-1 h-1/4 rounded-b-full"
+            style={{ background: "radial-gradient(ellipse at 50% 100%, rgba(20,16,14,0.7), transparent 70%)" }}
+          />
+        )}
+        {/* combustion */}
+        {app.burning && (
+          <div
+            className="pointer-events-none absolute inset-x-0 -top-6 h-8 animate-pulse rounded-full blur-[2px]"
+            style={{ background: `radial-gradient(ellipse at 50% 100%, ${app.burning}, transparent 70%)` }}
+          />
+        )}
+        {/* pressure warning on a sealed heated vessel */}
+        {app.sealed && app.pressure > 0.15 && !app.broken && (
+          <div className="pointer-events-none absolute -top-3 left-1/2 h-1.5 w-12 -translate-x-1/2 overflow-hidden rounded-full bg-background/70">
+            <div className="h-full bg-aurora-red transition-all" style={{ width: `${Math.min(100, app.pressure * 100)}%` }} />
+          </div>
+        )}
         {/* liquid overlay for containers */}
         {state && fill > 0 && (
           <svg
