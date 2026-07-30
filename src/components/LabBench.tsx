@@ -641,27 +641,33 @@ export function LabBench() {
 
   const addApparatus = (item: ApparatusItem) => {
     const wrap = benchRef.current; if (!wrap) return;
+    commit();
     const rect = wrap.getBoundingClientRect();
     const x = 80 + (placed.length * 40) % (rect.width - 200);
     const y = rect.height - 180 - item.height;
     const app = makePlaced(item, x, Math.max(20, y), placed.length);
     setPlaced((p) => [...p, app]);
     setSelectedUid(app.uid);
+    setSelectedUids([app.uid]);
     pushLog({ kind: "place", label: `Placed ${item.name}` });
     setMessage(`${item.name} placed. Right-click for actions.`);
   };
 
   const removePlaced = (uid: string) => {
+    commit();
     setPlaced((p) => p.filter((a) => a.uid !== uid));
+    setSelectedUids((s) => s.filter((u) => u !== uid));
     if (selectedUid === uid) setSelectedUid(null);
   };
 
   const emptyContainer = (uid: string) => {
     const app = placedRef.current.find((a) => a.uid === uid);
     if (!app?.state) return;
+    commit();
     app.state.substanceIds = {}; app.state.precipitate = null; app.state.bubblingGas = null;
     app.state.flameColor = null; app.state.color = "rgba(200,220,240,0.15)";
     app.state.pH = 7; app.state.currentVolume = 0;
+    app.burning = null; app.dryTicks = 0; app.pressure = 0;
     app.fx = { boiling: false, freezing: false, foaming: false, crystallising: false, exploding: 0, silverMirror: false };
     app.lastReaction = null;
     setPlaced((p) => [...p]);
@@ -669,9 +675,49 @@ export function LabBench() {
 
   const setIgnite = (uid: string, on: boolean) => {
     const app = placedRef.current.find((a) => a.uid === uid); if (!app) return;
+    commit();
     app.ignited = on;
     setPlaced((p) => [...p]);
-    pushLog({ kind: on ? "heat" : "cool", label: `${on ? "Ignited" : "Extinguished"} ${app.item.name}` });
+    pushLog({
+      kind: on ? "heat" : "cool",
+      label: on
+        ? `Ignited ${app.item.name} — ${flameSpec(app.flame).label}`
+        : `Extinguished ${app.item.name}`,
+    });
+  };
+
+  const setFlame = (uid: string, flame: FlameId) => {
+    const app = placedRef.current.find((a) => a.uid === uid); if (!app) return;
+    commit();
+    app.flame = flame;
+    app.ignited = true;
+    setPlaced((p) => [...p]);
+    const spec = flameSpec(flame);
+    pushLog({ kind: "heat", label: `Selected ${spec.label} (max ${spec.maxTemp} °C)` });
+    setMessage(spec.note);
+  };
+
+  const rotateSelected = (delta = 45) => {
+    const targets = selectedUids.length ? selectedUids : selectedUid ? [selectedUid] : [];
+    if (!targets.length) { setMessage("Select apparatus to rotate."); return; }
+    commit();
+    for (const uid of targets) {
+      const app = placedRef.current.find((a) => a.uid === uid);
+      if (app) app.rotation = (app.rotation + delta) % 360;
+    }
+    setPlaced((p) => [...p]);
+    pushLog({ kind: "connect", label: `Rotated ${targets.length} item(s) by ${delta}°` });
+  };
+
+  const toggleSeal = (uid: string) => {
+    const app = placedRef.current.find((a) => a.uid === uid); if (!app?.state) return;
+    commit();
+    app.sealed = !app.sealed;
+    setPlaced((p) => [...p]);
+    pushLog({ kind: "connect", label: `${app.sealed ? "Sealed" : "Unsealed"} ${app.item.name}` });
+    setMessage(app.sealed
+      ? "Vessel sealed — never heat a closed system, pressure will build."
+      : "Vessel opened to the atmosphere.");
   };
 
   const chillContainer = (uid: string) => {
@@ -682,18 +728,29 @@ export function LabBench() {
     setPlaced((p) => [...p]);
   };
 
-  const addChemical = (chem: ChemicalSubstance) => {
+  /** open the measured-amount dialog — nothing enters the vessel until it is confirmed */
+  const requestChemical = (chem: ChemicalSubstance) => {
     if (!selectedUid) { setMessage("Select a container on the bench first."); return; }
     const app = placedRef.current.find((a) => a.uid === selectedUid);
     if (!app?.state) { setMessage("That apparatus can't hold chemicals — select a beaker or tube."); return; }
-    app.state.substanceIds[chem.id] = (app.state.substanceIds[chem.id] || 0) + 5;
+    if (app.broken) { setMessage("That vessel is broken — remove it and place a new one."); return; }
+    setMeasure({ chem, amount: 10 });
+  };
+
+  const addChemical = (chem: ChemicalSubstance, amount: number) => {
+    if (!selectedUid) { setMessage("Select a container on the bench first."); return; }
+    const app = placedRef.current.find((a) => a.uid === selectedUid);
+    if (!app?.state) { setMessage("That apparatus can't hold chemicals — select a beaker or tube."); return; }
+    commit();
+    const unit = measurementUnit(chem.state);
+    app.state.substanceIds[chem.id] = (app.state.substanceIds[chem.id] || 0) + amount;
     const res = runReactionOn(app);
     if (res?.message) setMessage(res.message);
     pushLog({
       kind: res?.successExperimentId ? "reaction" : "add",
       label: res?.successExperimentId
-        ? `Added ${chem.name} · ✔ ${res.message}`
-        : `Added ${chem.name} to ${app.item.name}`,
+        ? `Measured ${amount} ${unit} ${chem.name} · ✔ ${res.message}`
+        : `Measured ${amount} ${unit} of ${chem.name} into ${app.item.name}`,
       experimentId: res?.successExperimentId,
     });
     setPlaced((p) => [...p]);
@@ -710,6 +767,7 @@ export function LabBench() {
     const to = placedRef.current.find((a) => a.uid === toUid);
     setPourPending(null);
     if (!from?.state || !to?.state || from.uid === to.uid) { setMessage("Pick a different container."); return; }
+    commit();
     // transfer half the substances
     const transfer: Record<string, number> = {};
     for (const [id, amt] of Object.entries(from.state.substanceIds)) {
