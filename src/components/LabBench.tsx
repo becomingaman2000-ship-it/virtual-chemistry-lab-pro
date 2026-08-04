@@ -27,6 +27,7 @@ import {
 import {
   Undo2, Redo2, Ruler, Lock, Unlock, AlertTriangle, Layers,
 } from "lucide-react";
+import { Wind, Magnet, Sparkles } from "lucide-react";
 
 import { APPARATUS, CATEGORIES, type ApparatusItem, type ApparatusShape } from "@/data/apparatus";
 import { ApparatusSVG } from "@/components/ApparatusSVG";
@@ -40,6 +41,10 @@ import {
   FLAMES, flameSpec, flamesFor, defaultFlameFor, stepPhysics, vesselLimits,
   measurementUnit, MEASURE_PRESETS, type FlameId, type Hazard,
 } from "@/lib/lab/physics";
+import {
+  INDICATORS, GAS_TESTS, SEPARATIONS, runIndicator, runGasTest, runFlameTest,
+  runSeparation, type TestOutcome,
+} from "@/lib/lab/labTests";
 
 /* ============================================================
    Types
@@ -355,6 +360,15 @@ export function LabBench() {
 
   /* -------- flame picker -------- */
   const [flamePicker, setFlamePicker] = useState<string | null>(null); // burner uid
+
+  /* -------- qualitative tests & separations -------- */
+  const [testPanel, setTestPanel] = useState<null | { kind: "indicator" | "gas" | "separate"; uid: string }>(null);
+  const [testResult, setTestResult] = useState<null | { title: string; outcome: TestOutcome }>(null);
+  useEffect(() => {
+    if (!testResult) return;
+    const t = setTimeout(() => setTestResult(null), 11000);
+    return () => clearTimeout(t);
+  }, [testResult]);
 
   /* -------- context menu -------- */
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; uid: string } | null>(null);
@@ -883,6 +897,66 @@ export function LabBench() {
   };
 
   /* ============================================================
+     Qualitative tests, flame tests & separation of mixtures
+  ============================================================ */
+  const targetApp = (uid?: string | null) =>
+    placedRef.current.find((a) => a.uid === (uid ?? selectedUid));
+
+  const applyOutcome = (app: PlacedApparatus, title: string, outcome: TestOutcome) => {
+    if (outcome.ok && app.state) {
+      commit();
+      for (const id of outcome.removed ?? []) delete app.state.substanceIds[id];
+      for (const [id, amt] of Object.entries(outcome.added ?? {})) {
+        app.state.substanceIds[id] = (app.state.substanceIds[id] || 0) + amt;
+      }
+      if (outcome.newPH !== undefined) app.state.pH = outcome.newPH;
+      if (outcome.color && (outcome.removed?.length || outcome.added)) {
+        app.state.color = outcome.color;
+      }
+      runReactionOn(app);
+      setPlaced((p) => [...p]);
+    }
+    setTestResult({ title, outcome });
+    setMessage(outcome.note ? `${outcome.observation} ${outcome.note}` : outcome.observation);
+    pushLog({
+      kind: "observe",
+      label: `${title} on ${app.item.name}: ${outcome.ok ? outcome.observation : `${outcome.observation} ${outcome.note ?? ""}`.trim()}`,
+    });
+    if (outcome.ok) setObservations((o) => [...o, outcome.observation]);
+  };
+
+  const doIndicator = (uid: string, indicatorId: string) => {
+    const app = targetApp(uid);
+    if (!app?.state) { setMessage("Select a container first."); return; }
+    const spec = INDICATORS.find((i) => i.id === indicatorId);
+    applyOutcome(app, spec?.label ?? "Indicator test", runIndicator(app.state, indicatorId));
+    setTestPanel(null);
+  };
+
+  const doGasTest = (uid: string, testId: string) => {
+    const app = targetApp(uid);
+    if (!app?.state) { setMessage("Select a container first."); return; }
+    const spec = GAS_TESTS.find((g) => g.id === testId);
+    applyOutcome(app, spec?.label ?? "Gas test", runGasTest(app.state, testId));
+    setTestPanel(null);
+  };
+
+  const doFlameTest = (uid?: string) => {
+    const app = targetApp(uid);
+    if (!app?.state) { setMessage("Select the vessel or watch-glass holding the sample."); return; }
+    applyOutcome(app, "Flame test", runFlameTest(app.state, !!app.state.isHeated));
+  };
+
+  const doSeparation = (uid: string, methodId: string) => {
+    const app = targetApp(uid);
+    if (!app?.state) { setMessage("Select a container first."); return; }
+    const available = placedRef.current.map((a) => a.item.id);
+    const spec = SEPARATIONS.find((s) => s.id === methodId);
+    applyOutcome(app, spec?.label ?? "Separation", runSeparation(app.state, methodId, available, !!app.state.isHeated));
+    setTestPanel(null);
+  };
+
+  /* ============================================================
      Pointer / drag
   ============================================================ */
   const dragRef = useRef<{ uid: string; dx: number; dy: number; lastX: number; lastY: number; moved: boolean } | null>(null);
@@ -1289,6 +1363,10 @@ export function LabBench() {
                 {isC && <CtxItem icon={Droplets} label="Empty container" onClick={() => { emptyContainer(app.uid); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={Wand2} label="Pour into…" onClick={() => { beginPour(app.uid); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={ThermometerSun} label="Observe" onClick={() => { observeSelected(); setCtxMenu(null); }} />}
+                {isC && <CtxItem icon={TestTube} label="Indicator test…" onClick={() => { setTestPanel({ kind: "indicator", uid: app.uid }); setCtxMenu(null); }} />}
+                {isC && <CtxItem icon={Wind} label="Test the gas…" onClick={() => { setTestPanel({ kind: "gas", uid: app.uid }); setCtxMenu(null); }} />}
+                {isC && <CtxItem icon={Sparkles} label="Flame test" onClick={() => { doFlameTest(app.uid); setCtxMenu(null); }} />}
+                {isC && <CtxItem icon={Magnet} label="Separate mixture…" onClick={() => { setTestPanel({ kind: "separate", uid: app.uid }); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={app.sealed ? Unlock : Lock} label={app.sealed ? "Remove stopper" : "Seal with stopper"} onClick={() => { toggleSeal(app.uid); setCtxMenu(null); }} />}
                 {isH && <CtxItem icon={Flame} label="Choose flame…" onClick={() => { setFlamePicker(app.uid); setCtxMenu(null); }} />}
                 {isH && <CtxItem icon={Flame} label={app.ignited ? "Extinguish" : "Ignite"} onClick={() => { setIgnite(app.uid, !app.ignited); setCtxMenu(null); }} />}
@@ -1385,6 +1463,10 @@ export function LabBench() {
           <ActionBtn onClick={() => selectedUid && beginPour(selectedUid)} icon={Wand2} label="Pour…" disabled={!selectedUid} />
           <ActionBtn onClick={() => rotateSelected(45)} icon={RotateCw} label="Rotate" disabled={!selectedUid} />
           <ActionBtn onClick={() => selectedUid && toggleSeal(selectedUid)} icon={Lock} label="Seal" disabled={!selectedUid} />
+          <ActionBtn onClick={() => selectedUid && setTestPanel({ kind: "indicator", uid: selectedUid })} icon={TestTube} label="Indicator…" disabled={!selectedUid} />
+          <ActionBtn onClick={() => selectedUid && setTestPanel({ kind: "gas", uid: selectedUid })} icon={Wind} label="Gas test…" disabled={!selectedUid} />
+          <ActionBtn onClick={() => doFlameTest()} icon={Sparkles} label="Flame test" disabled={!selectedUid} />
+          <ActionBtn onClick={() => selectedUid && setTestPanel({ kind: "separate", uid: selectedUid })} icon={Magnet} label="Separate…" disabled={!selectedUid} />
           <ActionBtn
             onClick={() => {
               const burner = placedRef.current.find((a) => a.role === "heat");
@@ -1581,6 +1663,99 @@ export function LabBench() {
             </motion.div>
           );
         })()}
+      </AnimatePresence>
+
+      {/* ---------- indicator / gas / separation picker ---------- */}
+      <AnimatePresence>
+        {testPanel && (() => {
+          const app = placed.find((a) => a.uid === testPanel.uid);
+          if (!app) return null;
+          const title =
+            testPanel.kind === "indicator" ? "Indicator test"
+              : testPanel.kind === "gas" ? "Test the gas evolved"
+                : "Separate the mixture";
+          const options =
+            testPanel.kind === "indicator"
+              ? INDICATORS.map((i) => ({ id: i.id, label: i.label, hint: i.kind === "paper" ? "Dip a fresh strip" : "Add 2–3 drops", swatch: i.stock }))
+              : testPanel.kind === "gas"
+                ? GAS_TESTS.map((g) => ({ id: g.id, label: g.label, hint: g.hint, swatch: "rgba(160,200,255,0.5)" }))
+                : SEPARATIONS.map((s) => ({
+                    id: s.id, label: s.label,
+                    hint: (s.needs ?? []).length ? `${s.hint} · needs ${(s.needs ?? []).join(", ")}` : s.hint,
+                    swatch: "rgba(255,200,120,0.6)",
+                  }));
+          const run = (id: string) =>
+            testPanel.kind === "indicator" ? doIndicator(app.uid, id)
+              : testPanel.kind === "gas" ? doGasTest(app.uid, id)
+                : doSeparation(app.uid, id);
+          return (
+            <motion.div
+              className="fixed inset-0 z-[85] grid place-items-center bg-charcoal/55 p-4 backdrop-blur-md"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setTestPanel(null)}
+            >
+              <motion.div
+                onClick={(e) => e.stopPropagation()}
+                initial={{ y: 24, opacity: 0, scale: 0.96 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 16, opacity: 0 }}
+                className="glass-strong w-full max-w-lg rounded-3xl border border-border/50 p-5 shadow-elegant"
+              >
+                <div className="text-[10px] font-mono uppercase tracking-widest text-turquoise">{title}</div>
+                <h3 className="mt-1 text-xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>{app.item.name}</h3>
+                <p className="mt-1 text-[11.5px] text-muted-foreground">
+                  pH {app.state?.pH.toFixed(1) ?? "—"} · {app.state?.temperature.toFixed(0) ?? "—"} °C ·
+                  {" "}{app.state?.bubblingGas ? `${app.state.bubblingGas.name} evolving` : "no gas evolving"}
+                </p>
+                <div className="mt-4 grid max-h-[52vh] gap-2 overflow-y-auto pr-1">
+                  {options.map((o) => (
+                    <button
+                      key={o.id}
+                      onClick={() => run(o.id)}
+                      className="flex items-start gap-3 rounded-2xl border border-border/50 bg-background/50 px-3 py-2.5 text-left transition hover:border-turquoise/60 hover:bg-turquoise/10"
+                    >
+                      <span className="mt-0.5 h-7 w-4 shrink-0 rounded-full border border-border/50" style={{ background: o.swatch }} />
+                      <span className="min-w-0">
+                        <span className="block text-[13.5px] font-semibold">{o.label}</span>
+                        <span className="block text-[11.5px] text-muted-foreground">{o.hint}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+
+      {/* ---------- test result card ---------- */}
+      <AnimatePresence>
+        {testResult && (
+          <motion.div
+            className="pointer-events-none fixed inset-x-0 bottom-36 z-[90] flex justify-center px-4"
+            initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }}
+          >
+            <div className="glass-strong pointer-events-auto flex w-full max-w-xl items-start gap-3 rounded-2xl border border-border/50 p-4 shadow-elegant">
+              <span
+                className="mt-0.5 h-10 w-10 shrink-0 rounded-xl border border-border/50"
+                style={{ background: testResult.outcome.color ?? "rgba(150,160,175,0.35)" }}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-turquoise">
+                  {testResult.title} · {testResult.outcome.ok ? "result" : "not possible"}
+                </div>
+                <p className="mt-0.5 text-[13px] leading-snug">{testResult.outcome.observation}</p>
+                {testResult.outcome.note && (
+                  <p className="mt-1 text-[11.5px] text-muted-foreground">{testResult.outcome.note}</p>
+                )}
+              </div>
+              <button
+                onClick={() => setTestResult(null)}
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-border/50 bg-background/50 hover:bg-foreground/10"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
 
       <AnimatePresence>

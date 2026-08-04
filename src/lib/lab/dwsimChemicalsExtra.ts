@@ -270,5 +270,108 @@ export const EXTRA_CHEMICAL_DATABASE: Record<string, ChemicalSubstance> = {
     molarMass: 46.0,
     description: "Striking, toxic Reddish-Brown gas generated from reacting Copper turnings with concentrated Nitric Acid.",
     hazards: ["Highly Toxic", "Severe pulmonary irritant", "Oxidizer"]
+  },
+
+  /* --- Solids used for mixture-separation and combination experiments --- */
+  "sulfur_solid": {
+    id: "sulfur_solid",
+    name: "Sulfur Powder",
+    formula: "S(s)",
+    state: "solid",
+    color: "rgba(255, 214, 51, 0.95)",
+    opacity: 1,
+    pH: 7,
+    molarMass: 32.1,
+    meltingPoint: 115,
+    description: "Bright yellow non-magnetic powder. Insoluble in water but soluble in carbon disulfide; forms iron(II) sulfide on heating with iron.",
+    hazards: ["Flammable dust"],
+    flammable: true
+  },
+  "iron_filings": {
+    id: "iron_filings",
+    name: "Iron Filings",
+    formula: "Fe(s)",
+    state: "solid",
+    color: "rgba(90, 92, 96, 1)",
+    opacity: 1,
+    pH: 7,
+    molarMass: 55.8,
+    meltingPoint: 1538,
+    description: "Grey magnetic metal filings. Separated from a sulfur/iron mixture with a magnet — a physical change.",
+    hazards: ["Dust irritant"]
+  },
+  "sand_solid": {
+    id: "sand_solid",
+    name: "Sand (Silicon Dioxide)",
+    formula: "SiO2(s)",
+    state: "solid",
+    color: "rgba(214, 189, 141, 1)",
+    opacity: 1,
+    pH: 7,
+    molarMass: 60.1,
+    description: "Insoluble granular solid — removed from a salt/sand mixture by filtration.",
+    hazards: []
+  },
+  "nacl_solid": {
+    id: "nacl_solid",
+    name: "Sodium Chloride (solid)",
+    formula: "NaCl(s)",
+    state: "solid",
+    color: "rgba(250, 250, 250, 1)",
+    opacity: 1,
+    pH: 7,
+    molarMass: 58.4,
+    description: "White soluble crystalline salt. Recovered from solution by evaporation and crystallisation.",
+    hazards: []
+  },
+  "iodine_solid": {
+    id: "iodine_solid",
+    name: "Iodine Crystals",
+    formula: "I2(s)",
+    state: "solid",
+    color: "rgba(70, 40, 90, 1)",
+    opacity: 1,
+    pH: 7,
+    molarMass: 253.8,
+    description: "Shiny grey-violet crystals that sublime directly to a purple vapour on gentle heating.",
+    hazards: ["Harmful vapour", "Stains skin"]
+  },
+  "nh4cl_solid": {
+    id: "nh4cl_solid",
+    name: "Ammonium Chloride (solid)",
+    formula: "NH4Cl(s)",
+    state: "solid",
+    color: "rgba(245, 245, 250, 1)",
+    opacity: 1,
+    pH: 5.5,
+    molarMass: 53.5,
+    description: "White solid that sublimes on heating and re-deposits as a white smoke-like ring higher up the tube.",
+    hazards: ["Irritant"]
+  },
+  "water_distilled": {
+    id: "water_distilled",
+    name: "Distilled Water",
+    formula: "H2O(l)",
+    state: "liquid",
+    color: "rgba(225, 240, 255, 0.18)",
+    opacity: 0.18,
+    pH: 7,
+    molarMass: 18,
+    boilingPoint: 100,
+    meltingPoint: 0,
+    description: "Neutral solvent used to dissolve soluble solids and rinse apparatus.",
+    hazards: []
+  },
+  "ink_sol": {
+    id: "ink_sol",
+    name: "Black Ink (dye mixture)",
+    formula: "mixed dyes",
+    state: "solution",
+    color: "rgba(25, 25, 35, 0.85)",
+    opacity: 0.85,
+    pH: 7,
+    molarMass: 200,
+    description: "Mixture of coloured dyes separated into its components by paper chromatography.",
+    hazards: ["Stains"]
   }
 };
