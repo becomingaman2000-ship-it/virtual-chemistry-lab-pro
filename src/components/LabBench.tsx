@@ -945,6 +945,7 @@ export function LabBench() {
     }
     setTestResult({ title, outcome });
     setMessage(outcome.note ? `${outcome.observation} ${outcome.note}` : outcome.observation);
+    recordReading(app, title, outcome.observation);
     pushLog({
       kind: "observe",
       label: `${title} on ${app.item.name}: ${outcome.ok ? outcome.observation : `${outcome.observation} ${outcome.note ?? ""}`.trim()}`,
