@@ -424,6 +424,10 @@ export function LabBench() {
         missed: report.missed,
         transcript: log.map((l) => ({ ts: l.ts, kind: l.kind, label: l.label })),
         observations,
+        readings,
+        criteria: report.criteria,
+        rawScore: report.rawScore,
+        rawTotal: report.rawTotal,
       });
       const safeTitle = experiment.title.replace(/[^a-z0-9]+/gi, "_").slice(0, 40);
       downloadReportPdf(bytes, `ChemVM_Exp${experiment.id}_${safeTitle}.pdf`);
