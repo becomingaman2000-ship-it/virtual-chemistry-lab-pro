@@ -1553,6 +1553,68 @@ export function LabBench() {
           </div>
         </div>
 
+        {/* results table */}
+        <AnimatePresence>
+          {resultsOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden border-t border-border/40 bg-background/50"
+            >
+              <div className="max-h-44 overflow-auto px-3 py-2">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <Table2 size={12} className="text-turquoise" />
+                  <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Table of results</span>
+                  {readings.length > 0 && (
+                    <button onClick={() => setReadings([])} className="ml-auto text-[11px] text-muted-foreground hover:text-aurora-red">Clear table</button>
+                  )}
+                </div>
+                {readings.length === 0 ? (
+                  <p className="py-2 text-[12px] text-muted-foreground">
+                    No readings yet — use “Record reading”, Observe, or run a test to fill the table.
+                  </p>
+                ) : (
+                  <table className="w-full border-collapse text-left text-[12px]">
+                    <thead>
+                      <tr className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                        <th className="py-1 pr-2 font-medium">#</th>
+                        <th className="py-1 pr-2 font-medium">Time</th>
+                        <th className="py-1 pr-2 font-medium">Vessel</th>
+                        <th className="py-1 pr-2 font-medium">Action</th>
+                        <th className="py-1 pr-2 font-medium">T (°C)</th>
+                        <th className="py-1 pr-2 font-medium">Vol (ml)</th>
+                        <th className="py-1 pr-2 font-medium">pH</th>
+                        <th className="py-1 pr-2 font-medium">Colour</th>
+                        <th className="py-1 font-medium">Observation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {readings.map((r, i) => (
+                        <tr key={r.ts + "-" + i} className="border-t border-border/30">
+                          <td className="py-1 pr-2 tabular-nums text-muted-foreground">{i + 1}</td>
+                          <td className="py-1 pr-2 tabular-nums text-muted-foreground">{new Date(r.ts).toLocaleTimeString()}</td>
+                          <td className="py-1 pr-2">{r.vessel}</td>
+                          <td className="py-1 pr-2">{r.action}</td>
+                          <td className="py-1 pr-2 tabular-nums">{r.temperature}</td>
+                          <td className="py-1 pr-2 tabular-nums">{r.volume}</td>
+                          <td className="py-1 pr-2 tabular-nums">{r.pH}</td>
+                          <td className="py-1 pr-2">
+                            <span className="inline-flex items-center gap-1">
+                              <span className="h-2.5 w-2.5 rounded-full border border-border/50" style={{ background: r.colour }} />
+                            </span>
+                          </td>
+                          <td className="py-1 text-foreground/80">{r.observation}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* log strip */}
         <div className="flex items-center gap-2 border-t border-border/40 bg-background/30 px-3 py-1.5 text-[11px]">
           <span className="font-mono uppercase text-muted-foreground">Log</span>
