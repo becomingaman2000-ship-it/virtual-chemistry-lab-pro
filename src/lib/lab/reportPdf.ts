@@ -187,7 +187,7 @@ export async function generateReportPdf(input: ReportInput): Promise<Uint8Array>
     cur = drawText(cur, doc, "No observations recorded.", italic, 10, GREY);
   } else {
     input.observations.forEach((o, i) => {
-      cur = drawText(cur, doc, `• ${o}`, font, 10, NAVY, 6);
+      cur = drawText(cur, doc, `- ${o}`, font, 10, NAVY, 6);
     });
   }
 
@@ -203,7 +203,7 @@ export async function generateReportPdf(input: ReportInput): Promise<Uint8Array>
     input.criteria.forEach((c) => {
       cur = drawText(
         cur, doc,
-        `${c.achieved ? "✓" : "✗"} ${c.label} — ${c.achieved ? c.marks : 0}/${c.marks}`,
+        `${c.achieved ? "[+]" : "[-]"} ${c.label} — ${c.achieved ? c.marks : 0}/${c.marks}`,
         font, 9, c.achieved ? TURQ : RED, 6,
       );
     });
@@ -212,18 +212,18 @@ export async function generateReportPdf(input: ReportInput): Promise<Uint8Array>
   // Assessment
   cur = heading(cur, doc, "Assessment — Correct", bold);
   if (input.correct.length === 0) cur = drawText(cur, doc, "Nothing scored.", italic, 10, GREY);
-  else input.correct.forEach((c) => { cur = drawText(cur, doc, `✓ ${c.label}`, font, 10, TURQ, 6); });
+  else input.correct.forEach((c) => { cur = drawText(cur, doc, `[+] ${c.label}`, font, 10, TURQ, 6); });
 
   cur = heading(cur, doc, "Assessment — Missed / Incorrect", bold);
   if (input.missed.length === 0) cur = drawText(cur, doc, "Nothing missed.", italic, 10, GREY);
-  else input.missed.forEach((c) => { cur = drawText(cur, doc, `✗ ${c.label}`, font, 10, RED, 6); });
+  else input.missed.forEach((c) => { cur = drawText(cur, doc, `[-] ${c.label}`, font, 10, RED, 6); });
 
   // Recommendations
   cur = heading(cur, doc, "Recommendations", bold);
   const recs = input.missed.length
     ? input.missed.slice(0, 5).map((m) => `Revisit: ${m.label}`)
     : ["Excellent work — attempt the next experiment in the syllabus."];
-  recs.forEach((r) => { cur = drawText(cur, doc, `→ ${r}`, font, 10, NAVY, 6); });
+  recs.forEach((r) => { cur = drawText(cur, doc, `-> ${r}`, font, 10, NAVY, 6); });
 
   // Summary
   cur = heading(cur, doc, "Summary", bold);
