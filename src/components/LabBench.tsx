@@ -881,36 +881,33 @@ export function LabBench() {
   };
 
   const resetTest = () => {
-    setReport(null); setLog([]); clearBench();
+    setReport(null); setLog([]); setReadings([]); setObservations([]);
+    hazardsRef.current = 0; measuredAddsRef.current = 0;
+    clearBench();
+    setMessage("Test reset — score cleared, bench empty. Start a fresh attempt.");
   };
 
   const scoreAttempt = () => {
-    const matched = log.some((l) => l.experimentId === experimentId);
-    const weights = currentSyllabus.weights;
-    const raw =
-      (log.filter((l) => l.kind === "add").length * (weights.add ?? 1) * 4) +
-      (log.filter((l) => l.kind === "heat").length * (weights.heat ?? 1) * 6) +
-      (log.filter((l) => l.kind === "observe").length * (weights.observe ?? 1) * 5) +
-      (log.filter((l) => l.kind === "reaction").length * 10) +
-      (log.filter((l) => l.kind === "pour").length * 3) +
-      (log.filter((l) => l.kind === "connect").length * 4);
-    const percent = Math.min(100, Math.round(raw + (matched ? 25 : 0)));
-    const band =
-      currentSyllabus.grades.find((g) => percent >= g.min) ??
-      currentSyllabus.grades[currentSyllabus.grades.length - 1];
-
-    const correct: { label: string }[] = [];
-    const missed: { label: string }[] = [];
-    if (matched) correct.push({ label: `Achieved DWSIM outcome for experiment #${experimentId}` });
-    else missed.push({ label: `Did not achieve DWSIM outcome for experiment #${experimentId}` });
-    if (log.some((l) => l.kind === "heat")) correct.push({ label: "Used heat correctly" });
-    else missed.push({ label: "No heating action recorded" });
-    if (log.filter((l) => l.kind === "add").length >= 2) correct.push({ label: "Added multiple reagents" });
-    else missed.push({ label: "Fewer than 2 reagents added" });
-    if (log.some((l) => l.kind === "observe")) correct.push({ label: "Recorded observations" });
-    else missed.push({ label: "No observations recorded" });
-
-    setReport({ percent, grade: band.grade, band: band.descriptor, correct, missed });
+    const outcome = markAttempt({
+      experiment,
+      syllabus: currentSyllabus,
+      log: log.map((l) => ({ ts: l.ts, kind: l.kind, label: l.label, experimentId: l.experimentId })),
+      readings,
+      observations,
+      hazards: hazardsRef.current,
+      reactionMatched: log.some((l) => l.experimentId === experimentId),
+      measuredAdds: measuredAddsRef.current,
+    });
+    setReport({
+      percent: outcome.percent,
+      grade: outcome.grade,
+      band: outcome.descriptor,
+      correct: outcome.correct,
+      missed: outcome.missed,
+      criteria: outcome.criteria,
+      rawScore: outcome.rawScore,
+      rawTotal: outcome.rawTotal,
+    });
   };
 
   const observeSelected = () => {
@@ -920,6 +917,7 @@ export function LabBench() {
       ?? `Volume ${app.state.currentVolume.toFixed(1)} ml · T ${app.state.temperature.toFixed(1)}°C · pH ${app.state.pH.toFixed(2)}.`;
     setMessage(obs);
     pushLog({ kind: "observe", label: `Observed ${app.item.name}: ${obs}` });
+    recordReading(app, "Observation", obs);
   };
 
   /* ============================================================
