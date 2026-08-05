@@ -96,10 +96,6 @@ function HomePage() {
         <div className="pointer-events-none absolute inset-0 bg-hero-radial" />
         <div className="mx-auto grid max-w-7xl items-center gap-12 md:grid-cols-2">
           <motion.div variants={stagger} initial="hidden" animate="show">
-            <motion.div variants={fadeUp} className="glass mb-5 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-mono uppercase tracking-widest text-muted-foreground">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-turquoise" />
-              Now in Beta · Curriculum-Aligned
-            </motion.div>
             <motion.h1
               variants={fadeUp}
               className="text-5xl font-semibold leading-[1.05] tracking-tight md:text-7xl"

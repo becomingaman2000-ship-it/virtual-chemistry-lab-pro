@@ -8,6 +8,7 @@
 
 import { PDFDocument, StandardFonts, rgb, PDFPage, PDFFont } from "pdf-lib";
 import type { SyllabusExperiment } from "@/lib/lab/experimentsCatalog";
+import type { Reading, Criterion } from "@/lib/lab/markingEngine";
 
 export interface ReportInput {
   student: { name: string; level: string; date: string };
@@ -20,6 +21,10 @@ export interface ReportInput {
   missed: { label: string }[];
   transcript: { ts: number; kind: string; label: string }[];
   observations: string[];
+  readings?: Reading[];
+  criteria?: Criterion[];
+  rawScore?: number;
+  rawTotal?: number;
 }
 
 const M = 48;
@@ -118,6 +123,11 @@ export async function generateReportPdf(input: ReportInput): Promise<Uint8Array>
   cur.page.drawText("GRADE", { x: M + 180, y: cur.y - 20, size: 9, font: bold, color: rgb(0.85, 0.9, 0.95) });
   cur.page.drawText(input.grade, { x: M + 180, y: cur.y - 44, size: 20, font: bold, color: rgb(1, 1, 1) });
   cur.page.drawText(input.band, { x: M + 180, y: cur.y - 60, size: 9, font: italic, color: rgb(0.85, 0.9, 0.95) });
+  if (input.rawTotal) {
+    cur.page.drawText(`${input.rawScore} / ${input.rawTotal} weighted marks`, {
+      x: M + 320, y: cur.y - 40, size: 10, font, color: rgb(0.85, 0.9, 0.95),
+    });
+  }
   cur.y -= 84;
 
   // Aim
@@ -153,13 +163,31 @@ export async function generateReportPdf(input: ReportInput): Promise<Uint8Array>
     });
   }
 
+  // Table of results
+  if (input.readings?.length) {
+    cur = heading(cur, doc, "Table of Results", bold);
+    cur = ensure(doc, cur, 16);
+    cur.page.drawText("#   VESSEL / ACTION            T(°C)   VOL(ml)   pH      OBSERVATION", {
+      x: M, y: cur.y - 9, size: 8, font: bold, color: TURQ,
+    });
+    cur.y -= 16;
+    input.readings.forEach((r, i) => {
+      cur = ensure(doc, cur, 14);
+      const head = `${String(i + 1).padStart(2, "0")}  ${r.vessel} — ${r.action}`.slice(0, 40).padEnd(42, " ");
+      const nums = `${String(r.temperature).padEnd(8)}${String(r.volume).padEnd(10)}${String(r.pH).padEnd(8)}`;
+      cur.page.drawText(head + nums, { x: M, y: cur.y - 9, size: 8, font, color: NAVY });
+      cur.y -= 11;
+      cur = drawText(cur, doc, r.observation, italic, 8, GREY, 16);
+    });
+  }
+
   // Observations
   cur = heading(cur, doc, "Observations", bold);
   if (input.observations.length === 0) {
     cur = drawText(cur, doc, "No observations recorded.", italic, 10, GREY);
   } else {
     input.observations.forEach((o, i) => {
-      cur = drawText(cur, doc, `• ${o}`, font, 10, NAVY, 6);
+      cur = drawText(cur, doc, `- ${o}`, font, 10, NAVY, 6);
     });
   }
 
@@ -169,21 +197,33 @@ export async function generateReportPdf(input: ReportInput): Promise<Uint8Array>
     cur = drawText(cur, doc, input.experiment.expectedResult, font, 10);
   }
 
+  // Mark scheme
+  if (input.criteria?.length) {
+    cur = heading(cur, doc, "Mark Scheme Breakdown", bold);
+    input.criteria.forEach((c) => {
+      cur = drawText(
+        cur, doc,
+        `${c.achieved ? "[+]" : "[-]"} ${c.label} — ${c.achieved ? c.marks : 0}/${c.marks}`,
+        font, 9, c.achieved ? TURQ : RED, 6,
+      );
+    });
+  }
+
   // Assessment
   cur = heading(cur, doc, "Assessment — Correct", bold);
   if (input.correct.length === 0) cur = drawText(cur, doc, "Nothing scored.", italic, 10, GREY);
-  else input.correct.forEach((c) => { cur = drawText(cur, doc, `✓ ${c.label}`, font, 10, TURQ, 6); });
+  else input.correct.forEach((c) => { cur = drawText(cur, doc, `[+] ${c.label}`, font, 10, TURQ, 6); });
 
   cur = heading(cur, doc, "Assessment — Missed / Incorrect", bold);
   if (input.missed.length === 0) cur = drawText(cur, doc, "Nothing missed.", italic, 10, GREY);
-  else input.missed.forEach((c) => { cur = drawText(cur, doc, `✗ ${c.label}`, font, 10, RED, 6); });
+  else input.missed.forEach((c) => { cur = drawText(cur, doc, `[-] ${c.label}`, font, 10, RED, 6); });
 
   // Recommendations
   cur = heading(cur, doc, "Recommendations", bold);
   const recs = input.missed.length
     ? input.missed.slice(0, 5).map((m) => `Revisit: ${m.label}`)
     : ["Excellent work — attempt the next experiment in the syllabus."];
-  recs.forEach((r) => { cur = drawText(cur, doc, `→ ${r}`, font, 10, NAVY, 6); });
+  recs.forEach((r) => { cur = drawText(cur, doc, `-> ${r}`, font, 10, NAVY, 6); });
 
   // Summary
   cur = heading(cur, doc, "Summary", bold);

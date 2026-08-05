@@ -28,6 +28,7 @@ import {
   Undo2, Redo2, Ruler, Lock, Unlock, AlertTriangle, Layers,
 } from "lucide-react";
 import { Wind, Magnet, Sparkles } from "lucide-react";
+import { Table2, ListChecks } from "lucide-react";
 
 import { APPARATUS, CATEGORIES, type ApparatusItem, type ApparatusShape } from "@/data/apparatus";
 import { ApparatusSVG } from "@/components/ApparatusSVG";
@@ -45,6 +46,7 @@ import {
   INDICATORS, GAS_TESTS, SEPARATIONS, runIndicator, runGasTest, runFlameTest,
   runSeparation, type TestOutcome,
 } from "@/lib/lab/labTests";
+import { markAttempt, type Reading, type Criterion } from "@/lib/lab/markingEngine";
 
 /* ============================================================
    Types
@@ -377,7 +379,31 @@ export function LabBench() {
   const [report, setReport] = useState<null | {
     percent: number; grade: string; band: string;
     correct: { label: string }[]; missed: { label: string }[];
+    criteria: Criterion[]; rawScore: number; rawTotal: number;
   }>(null);
+
+  /* -------- live results table -------- */
+  const [readings, setReadings] = useState<Reading[]>([]);
+  const [resultsOpen, setResultsOpen] = useState(false);
+  const hazardsRef = useRef(0);
+  const measuredAddsRef = useRef(0);
+
+  const recordReading = useCallback((app: PlacedApparatus, action: string, observation: string) => {
+    if (!app.state) return;
+    setReadings((r) => [
+      ...r,
+      {
+        ts: Date.now(),
+        vessel: app.item.name,
+        action,
+        temperature: Number(app.state!.temperature.toFixed(1)),
+        volume: Number(app.state!.currentVolume.toFixed(1)),
+        pH: Number(app.state!.pH.toFixed(2)),
+        colour: app.state!.color ?? "—",
+        observation,
+      },
+    ].slice(-60));
+  }, []);
   const [student, setStudent] = useState({ name: "", level: "", date: new Date().toISOString().slice(0, 10) });
   const [observations, setObservations] = useState<string[]>([]);
   const [obsDraft, setObsDraft] = useState("");
@@ -398,6 +424,10 @@ export function LabBench() {
         missed: report.missed,
         transcript: log.map((l) => ({ ts: l.ts, kind: l.kind, label: l.label })),
         observations,
+        readings,
+        criteria: report.criteria,
+        rawScore: report.rawScore,
+        rawTotal: report.rawTotal,
       });
       const safeTitle = experiment.title.replace(/[^a-z0-9]+/gi, "_").slice(0, 40);
       downloadReportPdf(bytes, `ChemVM_Exp${experiment.id}_${safeTitle}.pdf`);
@@ -593,6 +623,7 @@ export function LabBench() {
             app.broken = true;
             app.fx.exploding = hz.kind === "ruptured" ? 60 : 30;
             destroyed.push(`${app.item.name}: ${hz.message}`);
+            hazardsRef.current += 1;
           }
         }
 
@@ -764,6 +795,7 @@ export function LabBench() {
     const unit = measurementUnit(chem.state);
     app.state.substanceIds[chem.id] = (app.state.substanceIds[chem.id] || 0) + amount;
     const res = runReactionOn(app);
+    measuredAddsRef.current += 1;
     if (res?.message) setMessage(res.message);
     pushLog({
       kind: res?.successExperimentId ? "reaction" : "add",
@@ -772,6 +804,7 @@ export function LabBench() {
         : `Measured ${amount} ${unit} of ${chem.name} into ${app.item.name}`,
       experimentId: res?.successExperimentId,
     });
+    recordReading(app, `Added ${amount} ${unit} ${chem.name}`, res?.message ?? "Reagent added");
     setPlaced((p) => [...p]);
   };
 
@@ -855,36 +888,33 @@ export function LabBench() {
   };
 
   const resetTest = () => {
-    setReport(null); setLog([]); clearBench();
+    setReport(null); setLog([]); setReadings([]); setObservations([]);
+    hazardsRef.current = 0; measuredAddsRef.current = 0;
+    clearBench();
+    setMessage("Test reset — score cleared, bench empty. Start a fresh attempt.");
   };
 
   const scoreAttempt = () => {
-    const matched = log.some((l) => l.experimentId === experimentId);
-    const weights = currentSyllabus.weights;
-    const raw =
-      (log.filter((l) => l.kind === "add").length * (weights.add ?? 1) * 4) +
-      (log.filter((l) => l.kind === "heat").length * (weights.heat ?? 1) * 6) +
-      (log.filter((l) => l.kind === "observe").length * (weights.observe ?? 1) * 5) +
-      (log.filter((l) => l.kind === "reaction").length * 10) +
-      (log.filter((l) => l.kind === "pour").length * 3) +
-      (log.filter((l) => l.kind === "connect").length * 4);
-    const percent = Math.min(100, Math.round(raw + (matched ? 25 : 0)));
-    const band =
-      currentSyllabus.grades.find((g) => percent >= g.min) ??
-      currentSyllabus.grades[currentSyllabus.grades.length - 1];
-
-    const correct: { label: string }[] = [];
-    const missed: { label: string }[] = [];
-    if (matched) correct.push({ label: `Achieved DWSIM outcome for experiment #${experimentId}` });
-    else missed.push({ label: `Did not achieve DWSIM outcome for experiment #${experimentId}` });
-    if (log.some((l) => l.kind === "heat")) correct.push({ label: "Used heat correctly" });
-    else missed.push({ label: "No heating action recorded" });
-    if (log.filter((l) => l.kind === "add").length >= 2) correct.push({ label: "Added multiple reagents" });
-    else missed.push({ label: "Fewer than 2 reagents added" });
-    if (log.some((l) => l.kind === "observe")) correct.push({ label: "Recorded observations" });
-    else missed.push({ label: "No observations recorded" });
-
-    setReport({ percent, grade: band.grade, band: band.descriptor, correct, missed });
+    const outcome = markAttempt({
+      experiment,
+      syllabus: currentSyllabus,
+      log: log.map((l) => ({ ts: l.ts, kind: l.kind, label: l.label, experimentId: l.experimentId })),
+      readings,
+      observations,
+      hazards: hazardsRef.current,
+      reactionMatched: log.some((l) => l.experimentId === experimentId),
+      measuredAdds: measuredAddsRef.current,
+    });
+    setReport({
+      percent: outcome.percent,
+      grade: outcome.grade,
+      band: outcome.descriptor,
+      correct: outcome.correct,
+      missed: outcome.missed,
+      criteria: outcome.criteria,
+      rawScore: outcome.rawScore,
+      rawTotal: outcome.rawTotal,
+    });
   };
 
   const observeSelected = () => {
@@ -894,6 +924,7 @@ export function LabBench() {
       ?? `Volume ${app.state.currentVolume.toFixed(1)} ml · T ${app.state.temperature.toFixed(1)}°C · pH ${app.state.pH.toFixed(2)}.`;
     setMessage(obs);
     pushLog({ kind: "observe", label: `Observed ${app.item.name}: ${obs}` });
+    recordReading(app, "Observation", obs);
   };
 
   /* ============================================================
@@ -918,6 +949,7 @@ export function LabBench() {
     }
     setTestResult({ title, outcome });
     setMessage(outcome.note ? `${outcome.observation} ${outcome.note}` : outcome.observation);
+    recordReading(app, title, outcome.observation);
     pushLog({
       kind: "observe",
       label: `${title} on ${app.item.name}: ${outcome.ok ? outcome.observation : `${outcome.observation} ${outcome.note ?? ""}`.trim()}`,
@@ -1482,6 +1514,24 @@ export function LabBench() {
             </span>
           )}
           <div className="ml-auto flex items-center gap-1.5">
+            <button
+              onClick={() => {
+                const app = placedRef.current.find((a) => a.uid === selectedUid);
+                if (!app?.state) { setMessage("Select a container to record a reading."); return; }
+                recordReading(app, "Manual reading", app.lastReaction?.message ?? "Reading taken");
+                setResultsOpen(true);
+                setMessage("Reading added to the results table.");
+              }}
+              className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-background/60 px-3 py-1.5 text-[12px] font-medium hover:bg-turquoise/15"
+            >
+              <ListChecks size={12} /> Record reading
+            </button>
+            <button
+              onClick={() => setResultsOpen((v) => !v)}
+              className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-[12px] font-medium ${resultsOpen ? "border-turquoise/60 bg-turquoise/15" : "border-border/50 bg-background/60 hover:bg-foreground/5"}`}
+            >
+              <Table2 size={12} /> Results ({readings.length})
+            </button>
             {mode === "test" && (
               <>
                 <button
@@ -1506,6 +1556,68 @@ export function LabBench() {
             </button>
           </div>
         </div>
+
+        {/* results table */}
+        <AnimatePresence>
+          {resultsOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden border-t border-border/40 bg-background/50"
+            >
+              <div className="max-h-44 overflow-auto px-3 py-2">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <Table2 size={12} className="text-turquoise" />
+                  <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Table of results</span>
+                  {readings.length > 0 && (
+                    <button onClick={() => setReadings([])} className="ml-auto text-[11px] text-muted-foreground hover:text-aurora-red">Clear table</button>
+                  )}
+                </div>
+                {readings.length === 0 ? (
+                  <p className="py-2 text-[12px] text-muted-foreground">
+                    No readings yet — use “Record reading”, Observe, or run a test to fill the table.
+                  </p>
+                ) : (
+                  <table className="w-full border-collapse text-left text-[12px]">
+                    <thead>
+                      <tr className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                        <th className="py-1 pr-2 font-medium">#</th>
+                        <th className="py-1 pr-2 font-medium">Time</th>
+                        <th className="py-1 pr-2 font-medium">Vessel</th>
+                        <th className="py-1 pr-2 font-medium">Action</th>
+                        <th className="py-1 pr-2 font-medium">T (°C)</th>
+                        <th className="py-1 pr-2 font-medium">Vol (ml)</th>
+                        <th className="py-1 pr-2 font-medium">pH</th>
+                        <th className="py-1 pr-2 font-medium">Colour</th>
+                        <th className="py-1 font-medium">Observation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {readings.map((r, i) => (
+                        <tr key={r.ts + "-" + i} className="border-t border-border/30">
+                          <td className="py-1 pr-2 tabular-nums text-muted-foreground">{i + 1}</td>
+                          <td className="py-1 pr-2 tabular-nums text-muted-foreground">{new Date(r.ts).toLocaleTimeString()}</td>
+                          <td className="py-1 pr-2">{r.vessel}</td>
+                          <td className="py-1 pr-2">{r.action}</td>
+                          <td className="py-1 pr-2 tabular-nums">{r.temperature}</td>
+                          <td className="py-1 pr-2 tabular-nums">{r.volume}</td>
+                          <td className="py-1 pr-2 tabular-nums">{r.pH}</td>
+                          <td className="py-1 pr-2">
+                            <span className="inline-flex items-center gap-1">
+                              <span className="h-2.5 w-2.5 rounded-full border border-border/50" style={{ background: r.colour }} />
+                            </span>
+                          </td>
+                          <td className="py-1 text-foreground/80">{r.observation}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* log strip */}
         <div className="flex items-center gap-2 border-t border-border/40 bg-background/30 px-3 py-1.5 text-[11px]">
@@ -1788,6 +1900,9 @@ export function LabBench() {
                   <div className="text-4xl font-bold text-gradient" style={{ fontFamily: "var(--font-display)" }}>{report.percent}%</div>
                   <div className="mt-1 text-[13px] font-semibold">{report.grade}</div>
                   <div className="mt-1 text-[10px] text-muted-foreground">{report.band}</div>
+                  <div className="mt-2 border-t border-border/40 pt-2 text-[11px] tabular-nums text-muted-foreground">
+                    {report.rawScore} / {report.rawTotal} weighted marks
+                  </div>
                 </div>
                 <div className="space-y-3">
                   <div>
@@ -1810,6 +1925,41 @@ export function LabBench() {
                   </div>
                 </div>
               </div>
+              {/* mark scheme breakdown */}
+              <div className="mt-4 max-h-44 overflow-auto rounded-2xl border border-border/40 bg-background/40 p-3">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Mark scheme — {currentSyllabus.board} {currentSyllabus.level}</div>
+                <table className="w-full text-left text-[12px]">
+                  <tbody>
+                    {report.criteria.map((c) => (
+                      <tr key={c.id} className="border-t border-border/30">
+                        <td className="py-1 pr-2">{c.achieved ? "✓" : "✗"}</td>
+                        <td className="py-1 pr-2">{c.label}</td>
+                        <td className={`py-1 text-right tabular-nums ${c.achieved ? "text-turquoise" : "text-muted-foreground"}`}>{c.achieved ? c.marks : 0}/{c.marks}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {readings.length > 0 && (
+                <div className="mt-3 max-h-36 overflow-auto rounded-2xl border border-border/40 bg-background/40 p-3">
+                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Table of results ({readings.length})</div>
+                  <table className="w-full text-left text-[11.5px]">
+                    <tbody>
+                      {readings.map((r, i) => (
+                        <tr key={i} className="border-t border-border/30">
+                          <td className="py-1 pr-2 tabular-nums text-muted-foreground">{i + 1}</td>
+                          <td className="py-1 pr-2">{r.vessel}</td>
+                          <td className="py-1 pr-2">{r.action}</td>
+                          <td className="py-1 pr-2 tabular-nums">{r.temperature}°C</td>
+                          <td className="py-1 pr-2 tabular-nums">{r.volume} ml</td>
+                          <td className="py-1 pr-2 tabular-nums">pH {r.pH}</td>
+                          <td className="py-1">{r.observation}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
               {/* Student info + observations for PDF */}
               <div className="mt-5 grid gap-3 rounded-2xl border border-border/40 bg-background/40 p-4 md:grid-cols-3">
                 <label className="text-[11px]">
