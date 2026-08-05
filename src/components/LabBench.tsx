@@ -619,6 +619,7 @@ export function LabBench() {
             app.broken = true;
             app.fx.exploding = hz.kind === "ruptured" ? 60 : 30;
             destroyed.push(`${app.item.name}: ${hz.message}`);
+            hazardsRef.current += 1;
           }
         }
 
@@ -790,6 +791,7 @@ export function LabBench() {
     const unit = measurementUnit(chem.state);
     app.state.substanceIds[chem.id] = (app.state.substanceIds[chem.id] || 0) + amount;
     const res = runReactionOn(app);
+    measuredAddsRef.current += 1;
     if (res?.message) setMessage(res.message);
     pushLog({
       kind: res?.successExperimentId ? "reaction" : "add",
@@ -798,6 +800,7 @@ export function LabBench() {
         : `Measured ${amount} ${unit} of ${chem.name} into ${app.item.name}`,
       experimentId: res?.successExperimentId,
     });
+    recordReading(app, `Added ${amount} ${unit} ${chem.name}`, res?.message ?? "Reagent added");
     setPlaced((p) => [...p]);
   };
 
