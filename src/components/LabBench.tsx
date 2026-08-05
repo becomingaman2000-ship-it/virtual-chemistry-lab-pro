@@ -28,6 +28,7 @@ import {
   Undo2, Redo2, Ruler, Lock, Unlock, AlertTriangle, Layers,
 } from "lucide-react";
 import { Wind, Magnet, Sparkles } from "lucide-react";
+import { Table2, ListChecks } from "lucide-react";
 
 import { APPARATUS, CATEGORIES, type ApparatusItem, type ApparatusShape } from "@/data/apparatus";
 import { ApparatusSVG } from "@/components/ApparatusSVG";
@@ -45,6 +46,7 @@ import {
   INDICATORS, GAS_TESTS, SEPARATIONS, runIndicator, runGasTest, runFlameTest,
   runSeparation, type TestOutcome,
 } from "@/lib/lab/labTests";
+import { markAttempt, type Reading, type Criterion } from "@/lib/lab/markingEngine";
 
 /* ============================================================
    Types
@@ -377,7 +379,31 @@ export function LabBench() {
   const [report, setReport] = useState<null | {
     percent: number; grade: string; band: string;
     correct: { label: string }[]; missed: { label: string }[];
+    criteria: Criterion[]; rawScore: number; rawTotal: number;
   }>(null);
+
+  /* -------- live results table -------- */
+  const [readings, setReadings] = useState<Reading[]>([]);
+  const [resultsOpen, setResultsOpen] = useState(false);
+  const hazardsRef = useRef(0);
+  const measuredAddsRef = useRef(0);
+
+  const recordReading = useCallback((app: PlacedApparatus, action: string, observation: string) => {
+    if (!app.state) return;
+    setReadings((r) => [
+      ...r,
+      {
+        ts: Date.now(),
+        vessel: app.item.name,
+        action,
+        temperature: Number(app.state!.temperature.toFixed(1)),
+        volume: Number(app.state!.currentVolume.toFixed(1)),
+        pH: Number(app.state!.pH.toFixed(2)),
+        colour: app.state!.color ?? "—",
+        observation,
+      },
+    ].slice(-60));
+  }, []);
   const [student, setStudent] = useState({ name: "", level: "", date: new Date().toISOString().slice(0, 10) });
   const [observations, setObservations] = useState<string[]>([]);
   const [obsDraft, setObsDraft] = useState("");
