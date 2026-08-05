@@ -1896,6 +1896,9 @@ export function LabBench() {
                   <div className="text-4xl font-bold text-gradient" style={{ fontFamily: "var(--font-display)" }}>{report.percent}%</div>
                   <div className="mt-1 text-[13px] font-semibold">{report.grade}</div>
                   <div className="mt-1 text-[10px] text-muted-foreground">{report.band}</div>
+                  <div className="mt-2 border-t border-border/40 pt-2 text-[11px] tabular-nums text-muted-foreground">
+                    {report.rawScore} / {report.rawTotal} weighted marks
+                  </div>
                 </div>
                 <div className="space-y-3">
                   <div>
@@ -1918,6 +1921,41 @@ export function LabBench() {
                   </div>
                 </div>
               </div>
+              {/* mark scheme breakdown */}
+              <div className="mt-4 max-h-44 overflow-auto rounded-2xl border border-border/40 bg-background/40 p-3">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Mark scheme — {currentSyllabus.board} {currentSyllabus.level}</div>
+                <table className="w-full text-left text-[12px]">
+                  <tbody>
+                    {report.criteria.map((c) => (
+                      <tr key={c.id} className="border-t border-border/30">
+                        <td className="py-1 pr-2">{c.achieved ? "✓" : "✗"}</td>
+                        <td className="py-1 pr-2">{c.label}</td>
+                        <td className={`py-1 text-right tabular-nums ${c.achieved ? "text-turquoise" : "text-muted-foreground"}`}>{c.achieved ? c.marks : 0}/{c.marks}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {readings.length > 0 && (
+                <div className="mt-3 max-h-36 overflow-auto rounded-2xl border border-border/40 bg-background/40 p-3">
+                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Table of results ({readings.length})</div>
+                  <table className="w-full text-left text-[11.5px]">
+                    <tbody>
+                      {readings.map((r, i) => (
+                        <tr key={i} className="border-t border-border/30">
+                          <td className="py-1 pr-2 tabular-nums text-muted-foreground">{i + 1}</td>
+                          <td className="py-1 pr-2">{r.vessel}</td>
+                          <td className="py-1 pr-2">{r.action}</td>
+                          <td className="py-1 pr-2 tabular-nums">{r.temperature}°C</td>
+                          <td className="py-1 pr-2 tabular-nums">{r.volume} ml</td>
+                          <td className="py-1 pr-2 tabular-nums">pH {r.pH}</td>
+                          <td className="py-1">{r.observation}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
               {/* Student info + observations for PDF */}
               <div className="mt-5 grid gap-3 rounded-2xl border border-border/40 bg-background/40 p-4 md:grid-cols-3">
                 <label className="text-[11px]">
