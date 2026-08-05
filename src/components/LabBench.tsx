@@ -1510,6 +1510,24 @@ export function LabBench() {
             </span>
           )}
           <div className="ml-auto flex items-center gap-1.5">
+            <button
+              onClick={() => {
+                const app = placedRef.current.find((a) => a.uid === selectedUid);
+                if (!app?.state) { setMessage("Select a container to record a reading."); return; }
+                recordReading(app, "Manual reading", app.lastReaction?.message ?? "Reading taken");
+                setResultsOpen(true);
+                setMessage("Reading added to the results table.");
+              }}
+              className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-background/60 px-3 py-1.5 text-[12px] font-medium hover:bg-turquoise/15"
+            >
+              <ListChecks size={12} /> Record reading
+            </button>
+            <button
+              onClick={() => setResultsOpen((v) => !v)}
+              className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-[12px] font-medium ${resultsOpen ? "border-turquoise/60 bg-turquoise/15" : "border-border/50 bg-background/60 hover:bg-foreground/5"}`}
+            >
+              <Table2 size={12} /> Results ({readings.length})
+            </button>
             {mode === "test" && (
               <>
                 <button
