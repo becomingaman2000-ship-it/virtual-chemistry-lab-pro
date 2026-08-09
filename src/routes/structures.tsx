@@ -1,163 +1,166 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { PageTransition } from "@/components/PageTransition";
+import { Molecule3D } from "@/components/Molecule3D";
+import { Atom3D } from "@/components/Atom3D";
+import { MOLECULES3D, cpk, type Molecule3 } from "@/data/molecules3d";
+import { ELEMENTS, CATEGORY_META, type Category, type Element } from "@/data/periodicTable";
+import { Search, RotateCw, Pause, Play } from "lucide-react";
 
 export const Route = createFileRoute("/structures")({
   head: () => ({
     meta: [
-      { title: "ChemVM — Atomic & Molecular Structures" },
-      { name: "description", content: "Explore the shape of water, methane, benzene, ammonia and more. Rotate, zoom and read the chemistry behind each molecule." },
-      { property: "og:title", content: "ChemVM — Molecular Structures" },
-      { property: "og:description", content: "Interactive 3D-style structure gallery for common molecules." },
+      { title: "ChemVM — 3D Atomic & Molecular Structures" },
+      { name: "description", content: "Rotate animated 3D models of 40+ molecules and the atomic structure of all 118 elements, with bond angles, hybridisation and polarity." },
+      { property: "og:title", content: "ChemVM — 3D Molecular Structures" },
+      { property: "og:description", content: "Animated, draggable 3D ball-and-stick models plus every element's electron shells." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: StructuresPage,
 });
 
-interface Mol {
-  id: string; name: string; formula: string; shape: string;
-  atoms: { el: string; x: number; y: number; z: number; color: string; r: number }[];
-  bonds: [number, number][];
-  blurb: string;
-}
-
-const MOLECULES: Mol[] = [
-  {
-    id: "h2o", name: "Water", formula: "H₂O", shape: "Bent (104.5°)",
-    atoms: [
-      { el: "O", x: 0, y: 0, z: 0, color: "#ef4444", r: 22 },
-      { el: "H", x: -32, y: 26, z: 0, color: "#e2e8f0", r: 12 },
-      { el: "H", x: 32, y: 26, z: 0, color: "#e2e8f0", r: 12 },
-    ], bonds: [[0, 1], [0, 2]],
-    blurb: "Polar; hydrogen bonds give water its high boiling point and surface tension.",
-  },
-  {
-    id: "ch4", name: "Methane", formula: "CH₄", shape: "Tetrahedral (109.5°)",
-    atoms: [
-      { el: "C", x: 0, y: 0, z: 0, color: "#64748b", r: 20 },
-      { el: "H", x: 30, y: 30, z: 0, color: "#e2e8f0", r: 12 },
-      { el: "H", x: -30, y: 30, z: 0, color: "#e2e8f0", r: 12 },
-      { el: "H", x: -30, y: -30, z: 0, color: "#e2e8f0", r: 12 },
-      { el: "H", x: 30, y: -30, z: 0, color: "#e2e8f0", r: 12 },
-    ], bonds: [[0,1],[0,2],[0,3],[0,4]],
-    blurb: "Simplest hydrocarbon; major component of natural gas.",
-  },
-  {
-    id: "nh3", name: "Ammonia", formula: "NH₃", shape: "Trigonal pyramidal",
-    atoms: [
-      { el: "N", x: 0, y: -6, z: 0, color: "#3b82f6", r: 20 },
-      { el: "H", x: -32, y: 24, z: 0, color: "#e2e8f0", r: 12 },
-      { el: "H", x: 32, y: 24, z: 0, color: "#e2e8f0", r: 12 },
-      { el: "H", x: 0, y: -34, z: 0, color: "#e2e8f0", r: 12 },
-    ], bonds: [[0,1],[0,2],[0,3]],
-    blurb: "Weak base; feedstock for fertilisers via the Haber process.",
-  },
-  {
-    id: "co2", name: "Carbon dioxide", formula: "CO₂", shape: "Linear",
-    atoms: [
-      { el: "O", x: -40, y: 0, z: 0, color: "#ef4444", r: 20 },
-      { el: "C", x: 0, y: 0, z: 0, color: "#64748b", r: 18 },
-      { el: "O", x: 40, y: 0, z: 0, color: "#ef4444", r: 20 },
-    ], bonds: [[0,1],[1,2]],
-    blurb: "Non-polar despite polar bonds; a greenhouse gas produced by combustion and respiration.",
-  },
-  {
-    id: "c6h6", name: "Benzene", formula: "C₆H₆", shape: "Planar hexagon",
-    atoms: Array.from({ length: 6 }).flatMap((_, i) => {
-      const a = (i / 6) * Math.PI * 2;
-      return [
-        { el: "C", x: Math.cos(a) * 40, y: Math.sin(a) * 40, z: 0, color: "#64748b", r: 16 },
-        { el: "H", x: Math.cos(a) * 62, y: Math.sin(a) * 62, z: 0, color: "#e2e8f0", r: 10 },
-      ];
-    }),
-    bonds: [[0,2],[2,4],[4,6],[6,8],[8,10],[10,0],[0,1],[2,3],[4,5],[6,7],[8,9],[10,11]],
-    blurb: "Aromatic — delocalised π-system makes benzene unusually stable.",
-  },
-  {
-    id: "c2h6", name: "Ethane", formula: "C₂H₆", shape: "Two tetrahedra",
-    atoms: [
-      { el: "C", x: -20, y: 0, z: 0, color: "#64748b", r: 18 },
-      { el: "C", x: 20, y: 0, z: 0, color: "#64748b", r: 18 },
-      { el: "H", x: -42, y: -22, z: 0, color: "#e2e8f0", r: 10 },
-      { el: "H", x: -42, y: 22, z: 0, color: "#e2e8f0", r: 10 },
-      { el: "H", x: -20, y: 32, z: 0, color: "#e2e8f0", r: 10 },
-      { el: "H", x: 42, y: -22, z: 0, color: "#e2e8f0", r: 10 },
-      { el: "H", x: 42, y: 22, z: 0, color: "#e2e8f0", r: 10 },
-      { el: "H", x: 20, y: 32, z: 0, color: "#e2e8f0", r: 10 },
-    ], bonds: [[0,1],[0,2],[0,3],[0,4],[1,5],[1,6],[1,7]],
-    blurb: "Simplest alkane with a C–C single bond; component of natural gas.",
-  },
-  {
-    id: "h2so4", name: "Sulfuric acid", formula: "H₂SO₄", shape: "Tetrahedral about S",
-    atoms: [
-      { el: "S", x: 0, y: 0, z: 0, color: "#eab308", r: 22 },
-      { el: "O", x: 0, y: -34, z: 0, color: "#ef4444", r: 16 },
-      { el: "O", x: 0, y: 34, z: 0, color: "#ef4444", r: 16 },
-      { el: "O", x: -34, y: 0, z: 0, color: "#ef4444", r: 16 },
-      { el: "O", x: 34, y: 0, z: 0, color: "#ef4444", r: 16 },
-      { el: "H", x: -54, y: -18, z: 0, color: "#e2e8f0", r: 10 },
-      { el: "H", x: 54, y: 18, z: 0, color: "#e2e8f0", r: 10 },
-    ], bonds: [[0,1],[0,2],[0,3],[0,4],[3,5],[4,6]],
-    blurb: "Diprotic strong acid; central to industry (fertilisers, batteries, dehydration).",
-  },
-  {
-    id: "glucose", name: "Glucose", formula: "C₆H₁₂O₆", shape: "Pyranose ring",
-    atoms: [], bonds: [],
-    blurb: "Primary energy carrier in living cells; forms a 6-membered ring in solution.",
-  },
-];
-
 function StructuresPage() {
-  const [sel, setSel] = useState<Mol>(MOLECULES[0]);
-  const [rot, setRot] = useState(0);
+  const [tab, setTab] = useState<"molecules" | "elements">("molecules");
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState<Molecule3>(MOLECULES3D[0]);
+  const [elSel, setElSel] = useState<Element>(ELEMENTS[5]);
+  const [cat, setCat] = useState<Category | "all">("all");
+  const [spinning, setSpinning] = useState(true);
+
+  const mols = useMemo(() => MOLECULES3D.filter(m =>
+    (m.name + m.formula + m.category).toLowerCase().includes(q.toLowerCase())), [q]);
+  const els = useMemo(() => ELEMENTS.filter(e =>
+    (cat === "all" || e.category === cat) &&
+    (e.name + e.symbol + e.z).toLowerCase().includes(q.toLowerCase())), [q, cat]);
 
   return (
     <PageTransition>
       <div className="mx-auto max-w-6xl px-4 py-6">
         <h1 className="text-3xl font-semibold text-gradient" style={{ fontFamily: "var(--font-display)" }}>Atomic & Molecular Structures</h1>
-        <p className="text-sm text-muted-foreground">Click a molecule — drag the slider to rotate.</p>
+        <p className="text-sm text-muted-foreground">Drag to rotate, scroll to zoom — every model is live 3D.</p>
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-[240px_1fr]">
-          <div className="glass rounded-2xl p-2 max-h-[560px] overflow-auto">
-            {MOLECULES.map(m => (
-              <button key={m.id} onClick={() => setSel(m)}
-                className={`block w-full rounded-xl px-3 py-2 text-left text-sm transition ${sel.id === m.id ? "bg-navy text-peach dark:bg-turquoise dark:text-charcoal" : "hover:bg-foreground/5"}`}>
-                <div className="font-medium">{m.name}</div>
-                <div className="text-xs opacity-70">{m.formula}</div>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <div className="flex rounded-full border border-border/60 p-1">
+            {(["molecules", "elements"] as const).map(t => (
+              <button key={t} onClick={() => setTab(t)}
+                className={`rounded-full px-4 py-1 text-sm capitalize transition ${tab === t ? "bg-navy text-peach dark:bg-turquoise dark:text-charcoal" : "hover:bg-foreground/5"}`}>
+                {t === "molecules" ? `Molecules (${MOLECULES3D.length})` : `Elements (${ELEMENTS.length})`}
               </button>
             ))}
           </div>
-
-          <div className="glass rounded-3xl p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>{sel.name}</h2>
-                <div className="text-sm text-muted-foreground">{sel.formula} · {sel.shape}</div>
-              </div>
-              <input type="range" min={0} max={360} value={rot} onChange={(e) => setRot(+e.target.value)} className="w-40"/>
-            </div>
-            <div className="mt-4 aspect-video w-full overflow-hidden rounded-2xl bg-gradient-to-br from-foreground/5 to-foreground/10">
-              <svg viewBox="-120 -80 240 160" className="h-full w-full">
-                <g style={{ transformOrigin: "center", transform: `rotate(${rot}deg)` }}>
-                  {sel.bonds.map(([a, b], i) => {
-                    const A = sel.atoms[a], B = sel.atoms[b];
-                    if (!A || !B) return null;
-                    return <line key={i} x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke="currentColor" strokeOpacity="0.5" strokeWidth="2"/>;
-                  })}
-                  {sel.atoms.map((a, i) => (
-                    <g key={i}>
-                      <circle cx={a.x} cy={a.y} r={a.r} fill={a.color}/>
-                      <text x={a.x} y={a.y + 4} textAnchor="middle" fontSize={a.r > 14 ? 10 : 8} fill="#0f172a" fontWeight="700">{a.el}</text>
-                    </g>
-                  ))}
-                </g>
-              </svg>
-            </div>
-            <p className="mt-4 text-sm">{sel.blurb}</p>
+          <div className="relative">
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"/>
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…"
+              className="rounded-full border border-border/60 bg-transparent py-1.5 pl-8 pr-3 text-sm outline-none focus:border-foreground/30"/>
           </div>
+          <button onClick={() => setSpinning(s => !s)}
+            className="flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1.5 text-xs hover:bg-foreground/5">
+            {spinning ? <Pause size={13}/> : <Play size={13}/>}{spinning ? "Pause spin" : "Resume spin"}
+          </button>
+          {tab === "elements" && (
+            <select value={cat} onChange={(e) => setCat(e.target.value as Category | "all")}
+              className="rounded-full border border-border/60 bg-transparent px-3 py-1.5 text-xs">
+              <option value="all">All categories</option>
+              {Object.entries(CATEGORY_META).filter(([k]) => k !== "unknown").map(([k, m]) => (
+                <option key={k} value={k}>{m.label}</option>
+              ))}
+            </select>
+          )}
         </div>
+
+        {tab === "molecules" ? (
+          <div className="mt-4 grid gap-4 lg:grid-cols-[240px_1fr]">
+            <div className="glass rounded-2xl p-2 max-h-[560px] overflow-auto">
+              {mols.map(m => (
+                <button key={m.id} onClick={() => setSel(m)}
+                  className={`block w-full rounded-xl px-3 py-2 text-left text-sm transition ${sel.id === m.id ? "bg-navy text-peach dark:bg-turquoise dark:text-charcoal" : "hover:bg-foreground/5"}`}>
+                  <div className="font-medium">{m.name}</div>
+                  <div className="text-xs opacity-70">{m.formula} · {m.category}</div>
+                </button>
+              ))}
+            </div>
+
+            <div className="glass rounded-3xl p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>{sel.name}</h2>
+                  <div className="text-sm text-muted-foreground">{sel.formula} · {sel.shape}</div>
+                </div>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground"><RotateCw size={13}/> drag to rotate · scroll to zoom</div>
+              </div>
+              <div className="mt-4 aspect-video w-full overflow-hidden rounded-2xl bg-gradient-to-br from-foreground/5 to-foreground/10">
+                <Molecule3D mol={sel} autoRotate={spinning} className="h-full w-full"/>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+                <Field label="Bond angle">{sel.angle}</Field>
+                <Field label="Hybridisation">{sel.hybridisation}</Field>
+                <Field label="Polarity">{sel.polarity}</Field>
+                <Field label="Atoms">{sel.atoms.length}</Field>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {[...new Set(sel.atoms.map(a => a.el))].map(el => (
+                  <span key={el} className="flex items-center gap-1.5 rounded-full border border-border/60 px-2 py-0.5 text-xs">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: cpk(el).color }}/>{el}
+                    <span className="text-muted-foreground">×{sel.atoms.filter(a => a.el === el).length}</span>
+                  </span>
+                ))}
+              </div>
+              <p className="mt-4 text-sm">{sel.blurb}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_300px]">
+            <div className="glass rounded-3xl p-4">
+              <div className="grid max-h-[560px] grid-cols-[repeat(auto-fill,minmax(64px,1fr))] gap-1.5 overflow-auto">
+                {els.map(e => (
+                  <button key={e.z} onClick={() => setElSel(e)}
+                    className={`rounded-lg p-1 text-center transition ${elSel.z === e.z ? "ring-2 ring-offset-1 ring-offset-transparent" : "hover:scale-105"}`}
+                    style={{ background: CATEGORY_META[e.category].color }}>
+                    <div className="text-[8px] text-black/60">{e.z}</div>
+                    <div className="text-sm font-bold text-black/90">{e.symbol}</div>
+                    <div className="truncate text-[7px] text-black/60">{e.name}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="glass rounded-3xl p-5">
+              <div className="aspect-square w-full">
+                <Atom3D protons={elSel.z} neutrons={Math.round(elSel.mass) - elSel.z} electrons={elSel.z}
+                  symbol={elSel.symbol} color={CATEGORY_META[elSel.category].color} speed={spinning ? 1 : 0} className="h-full w-full"/>
+              </div>
+              <h2 className="mt-2 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>{elSel.name}</h2>
+              <div className="text-sm text-muted-foreground">{CATEGORY_META[elSel.category].label}</div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                <Field label="Protons">{elSel.z}</Field>
+                <Field label="Neutrons">{Math.round(elSel.mass) - elSel.z}</Field>
+                <Field label="Config">{elSel.config}</Field>
+                <Field label="Relative mass">{elSel.mass}</Field>
+                <Field label="Shells">{shellString(elSel.z)}</Field>
+                <Field label="Oxidation">{elSel.oxidation}</Field>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </PageTransition>
   );
 }
 
+function shellString(z: number) {
+  const caps = [2, 8, 18, 32, 32, 18, 8];
+  const out: number[] = [];
+  let left = z;
+  for (const c of caps) { if (left <= 0) break; out.push(Math.min(left, c)); left -= c; }
+  return out.join(",");
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="font-mono text-[13px] break-words">{children}</div>
+    </div>
+  );
+}
