@@ -47,7 +47,7 @@ export function Molecule3D({ mol, className, autoRotate = true }: { mol: Molecul
       if (spin.current.auto && !spin.current.drag) spin.current.ry += 0.006;
       const { rx, ry, zoom } = spin.current;
 
-      const maxR = Math.max(1, ...m.atoms.map(a => Math.hypot(a.x, a.y, a.z))) + 1;
+      const maxR = Math.max(1.2, ...m.atoms.map(a => Math.hypot(a.x, a.y, a.z) + cpk(a.el).r * 0.9));
       const scale = (Math.min(w, h) / 2 / maxR) * 0.82 * zoom;
       const cx = w / 2, cy = h / 2;
 
@@ -69,7 +69,7 @@ export function Molecule3D({ mol, className, autoRotate = true }: { mol: Molecul
         const dx = B.sx - A.sx, dy = B.sy - A.sy;
         const len = Math.hypot(dx, dy) || 1;
         const nx = -dy / len, ny = dx / len;
-        const gap = Math.max(2, scale * 0.11);
+        const gap = Math.max(2, scale * 0.16);
         const offs = order === 1 ? [0] : order === 2 ? [-gap, gap] : [-gap * 1.3, 0, gap * 1.3];
         items.push({ z: (A.z + B.z) / 2 - 0.01, fn: () => {
           offs.forEach((o) => {
@@ -77,7 +77,7 @@ export function Molecule3D({ mol, className, autoRotate = true }: { mol: Molecul
             ctx.moveTo(A.sx + nx * o, A.sy + ny * o);
             ctx.lineTo(B.sx + nx * o, B.sy + ny * o);
             ctx.strokeStyle = "rgba(148,163,184,0.85)";
-            ctx.lineWidth = Math.max(1.5, scale * 0.09);
+            ctx.lineWidth = Math.max(1.5, scale * 0.14);
             ctx.lineCap = "round";
             ctx.stroke();
           });
@@ -86,7 +86,7 @@ export function Molecule3D({ mol, className, autoRotate = true }: { mol: Molecul
 
       proj.forEach((p) => {
         const { color, r } = cpk(p.el);
-        const rad = r * scale * 0.55 * p.persp;
+        const rad = r * scale * 0.9 * p.persp;
         items.push({ z: p.z, fn: () => {
           const g = ctx.createRadialGradient(p.sx - rad * 0.35, p.sy - rad * 0.4, rad * 0.1, p.sx, p.sy, rad);
           g.addColorStop(0, "rgba(255,255,255,0.85)");
