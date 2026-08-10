@@ -61,11 +61,6 @@ const boards = [
 
 const topics = ["Acids & Bases", "Qualitative Analysis", "Organic Chemistry", "Electrochemistry", "Rates of Reaction", "Energetics"];
 
-const pricing = [
-  { name: "Free Trial", price: "$0", period: "forever", features: ["Limited experiments", "Full interface access", "Tutorial mode only"], cta: "Start Free", highlight: false },
-  { name: "Student Plan", price: "$4", period: "/ month", features: ["Full experiment library", "Progress tracking", "Unlimited Test mode", "Paynow / EcoCash / OneMoney"], cta: "Go Student", highlight: true },
-  { name: "School Plan", price: "Contact", period: "us", features: ["Multi-student licensing", "Instructor dashboard", "Bulk reporting & export", "Priority support"], cta: "Talk to Sales", highlight: false },
-];
 
 const testimonials = [
   { q: "Finally a chemistry lab that works even when our school's actual lab equipment doesn't.", by: "ZIMSEC student" },
@@ -269,47 +264,6 @@ function HomePage() {
             </ul>
           </div>
         </div>
-      </Section>
-
-      {/* PRICING */}
-      <Section eyebrow="Pricing" title="Start Free. Upgrade When You're Ready.">
-        <div className="grid gap-5 md:grid-cols-3">
-          {pricing.map((p) => (
-            <div
-              key={p.name}
-              className={`glass hover-lift rounded-2xl p-7 ${p.highlight ? "shadow-glow ring-1 ring-turquoise/50" : ""}`}
-            >
-              {p.highlight && (
-                <div className="mb-3 inline-flex rounded-full bg-aurora animate-aurora px-3 py-1 text-[10px] font-mono uppercase tracking-widest text-white">
-                  Most popular
-                </div>
-              )}
-              <h3 className="text-xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>{p.name}</h3>
-              <div className="mt-2 flex items-baseline gap-1">
-                <span className="text-4xl font-bold text-gradient">{p.price}</span>
-                <span className="text-sm text-muted-foreground">{p.period}</span>
-              </div>
-              <ul className="mt-5 space-y-2">
-                {p.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-sm text-foreground/85">
-                    <Check size={16} className="mt-0.5 shrink-0 text-turquoise" /> {f}
-                  </li>
-                ))}
-              </ul>
-              <Link
-                to="/lab"
-                className={`mt-6 inline-flex w-full items-center justify-center rounded-full px-5 py-2.5 text-sm font-medium ${
-                  p.highlight
-                    ? "bg-navy text-peach dark:bg-turquoise dark:text-charcoal"
-                    : "border border-border bg-background/40 text-foreground hover:bg-foreground/5"
-                }`}
-              >
-                {p.cta}
-              </Link>
-            </div>
-          ))}
-        </div>
-        <p className="mt-4 text-center text-xs text-muted-foreground">Payment processed locally via Paynow — EcoCash, OneMoney, and major Zimbabwean payment rails supported.</p>
       </Section>
 
       {/* TESTIMONIALS */}

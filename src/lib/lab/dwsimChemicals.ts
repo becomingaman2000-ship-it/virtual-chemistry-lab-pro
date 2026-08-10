@@ -662,8 +662,9 @@ export const CHEMICAL_DATABASE: Record<string, ChemicalSubstance> = {
 };
 
 import { EXTRA_CHEMICAL_DATABASE } from "./dwsimChemicalsExtra";
+import { MISSING_CHEMICAL_DATABASE } from "./dwsimChemicalsMissing";
 
-Object.assign(CHEMICAL_DATABASE, EXTRA_CHEMICAL_DATABASE);
+Object.assign(CHEMICAL_DATABASE, EXTRA_CHEMICAL_DATABASE, MISSING_CHEMICAL_DATABASE);
 
 export function getChemical(id: string): ChemicalSubstance {
   return CHEMICAL_DATABASE[id] || {
