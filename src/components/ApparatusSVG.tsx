@@ -645,6 +645,61 @@ export function ApparatusSVG({ item, className }: { item: ApparatusItem; classNa
           ))}
         </V>
       );
+    case "triangle":
+      return (
+        <V>
+          <path d={`M${w * 0.12} ${h - 10} L${w / 2} 10 L${w - w * 0.12} ${h - 10} Z`} {...s} fill="none" strokeWidth="3" />
+          <path d={`M${w * 0.26} ${h - 22} L${w / 2} 24 L${w - w * 0.26} ${h - 22} Z`} stroke={fill} strokeWidth="6" fill="none" strokeLinejoin="round" />
+        </V>
+      );
+    case "shield":
+      return (
+        <V>
+          <rect x="6" y="8" width={w - 12} height={h - 16} rx="4" {...s} fill={fill} fillOpacity="0.25" />
+          <line x1={w * 0.33} y1="8" x2={w * 0.33} y2={h - 8} {...s} />
+          <line x1={w * 0.66} y1="8" x2={w * 0.66} y2={h - 8} {...s} />
+        </V>
+      );
+    case "wool":
+      return (
+        <V>
+          {[[0.3, 0.35, 0.24], [0.62, 0.4, 0.2], [0.45, 0.65, 0.26], [0.72, 0.7, 0.18]].map(([x, y, r], i) => (
+            <circle key={i} cx={w * x} cy={h * y} r={Math.min(w, h) * r} fill={fill} stroke={color} strokeWidth="1" fillOpacity="0.9" />
+          ))}
+        </V>
+      );
+    case "sandpaper":
+      return (
+        <V>
+          <rect x="4" y="4" width={w - 8} height={h - 8} rx="3" {...s} fill={fill} />
+          {Array.from({ length: 26 }).map((_, i) => (
+            <circle key={i} cx={8 + ((i * 37) % (w - 16))} cy={8 + ((i * 53) % (h - 16))} r="1.2" fill={color} opacity="0.6" />
+          ))}
+        </V>
+      );
+    case "tubing":
+      return (
+        <V>{liqGrad}
+          <path d={`M${w * 0.25} 6 L${w * 0.75} 6 L${w * 0.8} ${h - 10} Q${w / 2} ${h + 2} ${w * 0.2} ${h - 10} Z`} {...s} fill={`url(#${liqId})`} fillOpacity="0.5" />
+          <line x1={w * 0.25} y1="6" x2={w * 0.75} y2="6" {...s} strokeWidth="3" />
+        </V>
+      );
+    case "blender":
+      return (
+        <V>
+          <path d={`M${w * 0.22} 6 L${w * 0.78} 6 L${w * 0.7} ${h * 0.6} L${w * 0.3} ${h * 0.6} Z`} {...s} fill={fill} fillOpacity="0.3" />
+          <rect x={w * 0.2} y={h * 0.6} width={w * 0.6} height={h * 0.36} rx="6" {...s} fill={color} fillOpacity="0.5" />
+          <circle cx={w * 0.5} cy={h * 0.82} r="5" {...s} fill={fill} />
+        </V>
+      );
+    case "bulb":
+      return (
+        <V>
+          <circle cx={w / 2} cy={h * 0.38} r={Math.min(w, h) * 0.3} {...s} fill={fill} fillOpacity="0.7" />
+          <rect x={w * 0.36} y={h * 0.62} width={w * 0.28} height={h * 0.22} {...s} fill={color} fillOpacity="0.4" />
+          <line x1={w * 0.5} y1={h * 0.84} x2={w * 0.5} y2={h - 4} {...s} strokeWidth="3" />
+        </V>
+      );
   }
   // fallback for any shape without a bespoke drawing
   return (

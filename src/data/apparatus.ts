@@ -15,7 +15,8 @@ export type ApparatusShape =
   | "gas-jar" | "delivery-tube" | "gas-syringe" | "trough" | "splint" | "wire-loop"
   | "spot-plate" | "tile" | "tank" | "capillary" | "electrode" | "power-supply"
   | "meter" | "cuvette" | "calorimeter" | "column" | "magnet" | "lamp" | "stopper"
-  | "spirit-lamp" | "combustion-tube" | "salt-bridge" | "ice-bath" | "leads";
+  | "spirit-lamp" | "combustion-tube" | "salt-bridge" | "ice-bath" | "leads"
+  | "triangle" | "wool" | "sandpaper" | "tubing" | "blender" | "shield" | "bulb";
 
 export type ApparatusCategory =
   | "Containers & Vessels"
@@ -421,6 +422,48 @@ export const APPARATUS: ApparatusItem[] = [
   { id: "data-logger", name: "Data Logger with Probes", category: "Measuring Instruments", shape: "meter",
     width: 110, height: 75, mass: 700, friction: 0.7, restitution: 0.03, color: DARK, fill: TEAL,
     usage: "Recording temperature, pH, pressure or conductivity continuously against time." },
+  { id: "pipeclay-triangle", name: "Pipeclay Triangle", category: "Heating Equipment", shape: "triangle",
+    width: 80, height: 70, mass: 60, friction: 0.7, restitution: 0.05, color: METAL, fill: "#D9CBB4",
+    usage: "Supporting a crucible on a tripod during strong heating to constant mass." },
+  { id: "draught-shield", name: "Draught Shield", category: "Heating Equipment", shape: "shield",
+    width: 120, height: 110, mass: 400, friction: 0.7, restitution: 0.02, color: METAL, fill: WHITE,
+    usage: "Shielding a spirit burner flame so heat loss in calorimetry is minimised." },
+  { id: "cotton-wool", name: "Cotton Wool Plug", category: "Hand Tools", shape: "wool",
+    width: 50, height: 45, mass: 3, friction: 0.8, restitution: 0.05, color: METAL, fill: WHITE,
+    usage: "Loose plug that retains solid while allowing gas to escape; also soaks reagent for diffusion experiments." },
+  { id: "sandpaper", name: "Sandpaper / Emery Cloth", category: "Hand Tools", shape: "sandpaper",
+    width: 80, height: 60, mass: 15, friction: 0.9, restitution: 0.02, color: DARK, fill: "#C4A484",
+    usage: "Cleaning the oxide layer from metal ribbon and electrodes before use." },
+  { id: "visking-tubing", name: "Visking (Dialysis) Tubing", category: "Distillation & Specialised", shape: "tubing",
+    width: 44, height: 130, mass: 20, friction: 0.5, restitution: 0.05, color: INK, fill: WHITE,
+    usage: "Partially permeable membrane for osmosis and dialysis of starch/glucose mixtures." },
+  { id: "electrophoresis-tank", name: "Electrophoresis Tank (U-tube)", category: "Electrochemistry & Analysis", shape: "tank",
+    width: 140, height: 100, mass: 900, friction: 0.7, restitution: 0.02, color: INK, fill: PURPLE,
+    usage: "Separating charged ions or amino acids in a buffer under a high-voltage DC field.",
+    hazards: "High voltage." },
+  { id: "victor-meyer", name: "Victor Meyer Apparatus", category: "Distillation & Specialised", shape: "column",
+    width: 60, height: 170, mass: 700, friction: 0.5, restitution: 0.03, color: INK, fill: AMBER,
+    usage: "Determining relative molecular mass of a volatile liquid by air displacement." },
+  { id: "steam-generator", name: "Steam Generator", category: "Heating Equipment", shape: "calorimeter",
+    width: 110, height: 100, mass: 1500, friction: 0.7, restitution: 0.02, color: METAL, fill: BLUE,
+    usage: "Supplying a steady stream of steam to a heated metal or reaction tube.",
+    hazards: "Scalding steam." },
+  { id: "blender", name: "Laboratory Blender", category: "Hand Tools", shape: "blender",
+    width: 80, height: 120, mass: 2500, friction: 0.8, restitution: 0.02, color: DARK, fill: METAL,
+    usage: "Homogenising plant or animal tissue for DNA and pigment extraction." },
+  { id: "cheesecloth", name: "Cheesecloth / Muslin Filter", category: "Hand Tools", shape: "paper",
+    width: 70, height: 70, mass: 6, friction: 0.7, restitution: 0.05, color: INK, fill: "#EFE9DA",
+    usage: "Coarse filtering of blended tissue before precipitation steps." },
+  { id: "spooling-rod", name: "Glass Spooling Rod", category: "Hand Tools", shape: "rod",
+    width: 12, height: 130, mass: 25, friction: 0.4, restitution: 0.1, color: INK, fill: WHITE,
+    usage: "Winding out DNA threads or a continuous nylon filament from a liquid interface." },
+  { id: "laser-pointer", name: "Laser / Torch Source", category: "Measuring Instruments", shape: "lamp",
+    width: 100, height: 40, mass: 80, friction: 0.5, restitution: 0.1, color: DARK, fill: RED,
+    usage: "Demonstrating the Tyndall effect in colloids in a darkened chamber.",
+    hazards: "Never aim at the eyes." },
+  { id: "led-bulb", name: "LED Bulb / Lamp Circuit", category: "Electrochemistry & Analysis", shape: "bulb",
+    width: 60, height: 80, mass: 40, friction: 0.5, restitution: 0.1, color: DARK, fill: AMBER,
+    usage: "Visual indicator of electrical conductivity in electrolyte testing circuits." },
 ];
 
 export const CATEGORIES: ApparatusCategory[] = [
