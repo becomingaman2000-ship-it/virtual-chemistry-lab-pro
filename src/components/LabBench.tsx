@@ -47,6 +47,8 @@ import {
   runSeparation, type TestOutcome,
 } from "@/lib/lab/labTests";
 import { markAttempt, type Reading, type Criterion } from "@/lib/lab/markingEngine";
+import { resolveApparatus } from "@/lib/lab/apparatusResolver";
+import { buildProcedure } from "@/lib/lab/experimentProcedure";
 
 /* ============================================================
    Types
@@ -1089,6 +1091,13 @@ export function LabBench() {
     () => chemicalList.filter((c) => experiment.requiredChemicalIds.includes(c.id)),
     [chemicalList, experiment.requiredChemicalIds],
   );
+
+  const requiredApparatus = useMemo(() => resolveApparatus(experiment.materials), [experiment.materials]);
+  const procedure = useMemo(() => buildProcedure(experiment), [experiment]);
+  const placeApparatusById = (id: string) => {
+    const item = APPARATUS.find((a) => a.id === id);
+    if (item) addApparatus(item);
+  };
 
   const toggleGroup = (id: string) => setExpandedGroups((g) => ({ ...g, [id]: !g[id] }));
 
