@@ -1619,19 +1619,6 @@ export function LabBench() {
           )}
         </AnimatePresence>
 
-        {/* log strip */}
-        <div className="flex items-center gap-2 border-t border-border/40 bg-background/30 px-3 py-1.5 text-[11px]">
-          <span className="font-mono uppercase text-muted-foreground">Log</span>
-          <div className="flex flex-1 gap-3 overflow-x-auto">
-            {log.length === 0 && <span className="text-muted-foreground">Nothing yet — start by placing apparatus.</span>}
-            {log.slice(0, 8).map((l, i) => (
-              <span key={i} className={`shrink-0 ${l.kind === "reaction" ? "text-turquoise font-medium" : "text-foreground/75"}`}>
-                <ChevronRight size={10} className="mr-0.5 inline" />
-                {l.label}
-              </span>
-            ))}
-          </div>
-        </div>
       </section>
 
       {/* ================= REPORT MODAL ================= */}
