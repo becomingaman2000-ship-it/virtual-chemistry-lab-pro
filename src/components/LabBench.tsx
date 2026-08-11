@@ -47,6 +47,8 @@ import {
   runSeparation, type TestOutcome,
 } from "@/lib/lab/labTests";
 import { markAttempt, type Reading, type Criterion } from "@/lib/lab/markingEngine";
+import { resolveApparatus } from "@/lib/lab/apparatusResolver";
+import { buildProcedure } from "@/lib/lab/experimentProcedure";
 
 /* ============================================================
    Types
@@ -1090,6 +1092,13 @@ export function LabBench() {
     [chemicalList, experiment.requiredChemicalIds],
   );
 
+  const requiredApparatus = useMemo(() => resolveApparatus(experiment.materials), [experiment.materials]);
+  const procedure = useMemo(() => buildProcedure(experiment), [experiment]);
+  const placeApparatusById = (id: string) => {
+    const item = APPARATUS.find((a) => a.id === id);
+    if (item) addApparatus(item);
+  };
+
   const toggleGroup = (id: string) => setExpandedGroups((g) => ({ ...g, [id]: !g[id] }));
 
   const meta = metaFor(experimentId);
@@ -1433,21 +1442,65 @@ export function LabBench() {
                   </button>
                 </div>
                 <p className="mt-2 text-[12px] text-muted-foreground">{experiment.objective}</p>
-                <div className="mt-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-turquoise">Procedure</div>
-                  <ol className="mt-1 space-y-1 text-[12px] text-foreground/80">
-                    {experiment.steps.map((s, i) => (
+
+                <BriefSection title="Safety & risk assessment">
+                  <ul className="space-y-1">
+                    {procedure.safety.map((s, i) => <li key={i} className="leading-snug">· {s}</li>)}
+                  </ul>
+                </BriefSection>
+
+                <BriefSection title={`Apparatus (${requiredApparatus.length}) — tap to place`}>
+                  <div className="grid gap-1">
+                    {requiredApparatus.map((a) => (
+                      <button
+                        key={a.id}
+                        onClick={() => placeApparatusById(a.id)}
+                        className="flex items-center gap-2 rounded-lg border border-border/40 bg-background/60 px-2 py-1.5 text-left text-[11px] hover:border-turquoise/60"
+                      >
+                        <span className="h-4 w-4 shrink-0 rounded border border-border/50" style={{ background: a.fill }} />
+                        <span className="truncate">{a.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </BriefSection>
+
+                <BriefSection title="Setting up">
+                  <ol className="space-y-1">
+                    {procedure.setup.map((s, i) => <li key={i} className="leading-snug">{i + 1}. {s}</li>)}
+                  </ol>
+                </BriefSection>
+
+                <BriefSection title="Method" defaultOpen>
+                  <ol className="space-y-1.5">
+                    {procedure.method.map((s, i) => (
                       <li key={i} className="flex gap-1.5">
                         <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-turquoise/20 text-[9px] font-bold">{i + 1}</span>
-                        <span className="leading-snug">{s}</span>
+                        <span className="leading-snug">
+                          {s.text}
+                          {s.detail && <span className="mt-0.5 block text-[11px] italic text-muted-foreground">{s.detail}</span>}
+                        </span>
                       </li>
                     ))}
                   </ol>
-                </div>
-                <div className="mt-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-turquoise">Expected result</div>
-                  <p className="mt-1 text-[12px] text-foreground/80">{experiment.expectedResult}</p>
-                </div>
+                </BriefSection>
+
+                <BriefSection title="What to record">
+                  <ul className="space-y-1">
+                    {procedure.recording.map((s, i) => <li key={i} className="leading-snug">· {s}</li>)}
+                  </ul>
+                </BriefSection>
+
+                <BriefSection title="Results & analysis">
+                  <ul className="space-y-1">
+                    {procedure.analysis.map((s, i) => <li key={i} className="leading-snug">· {s}</li>)}
+                  </ul>
+                </BriefSection>
+
+                <BriefSection title="Clearing away">
+                  <ul className="space-y-1">
+                    {procedure.cleanup.map((s, i) => <li key={i} className="leading-snug">· {s}</li>)}
+                  </ul>
+                </BriefSection>
                 {applicableChemicals.length > 0 && (
                   <div className="mt-3">
                     <div className="text-[10px] font-semibold uppercase tracking-widest text-turquoise">Required reagents</div>
@@ -1619,19 +1672,6 @@ export function LabBench() {
           )}
         </AnimatePresence>
 
-        {/* log strip */}
-        <div className="flex items-center gap-2 border-t border-border/40 bg-background/30 px-3 py-1.5 text-[11px]">
-          <span className="font-mono uppercase text-muted-foreground">Log</span>
-          <div className="flex flex-1 gap-3 overflow-x-auto">
-            {log.length === 0 && <span className="text-muted-foreground">Nothing yet — start by placing apparatus.</span>}
-            {log.slice(0, 8).map((l, i) => (
-              <span key={i} className={`shrink-0 ${l.kind === "reaction" ? "text-turquoise font-medium" : "text-foreground/75"}`}>
-                <ChevronRight size={10} className="mr-0.5 inline" />
-                {l.label}
-              </span>
-            ))}
-          </div>
-        </div>
       </section>
 
       {/* ================= REPORT MODAL ================= */}
@@ -2062,6 +2102,26 @@ function CtxHeader({ label }: { label: string }) {
     </div>
   );
 }
+
+/** Collapsible block inside the experiment brief drawer. */
+function BriefSection({
+  title, children, defaultOpen = false,
+}: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="mt-3 border-t border-border/40 pt-2">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-1 text-left text-[10px] font-semibold uppercase tracking-widest text-turquoise"
+      >
+        <ChevronRight size={11} className={`transition-transform ${open ? "rotate-90" : ""}`} />
+        {title}
+      </button>
+      {open && <div className="mt-1.5 text-[12px] text-foreground/80">{children}</div>}
+    </div>
+  );
+}
+
 function CtxItem({
   icon: Icon, label, onClick, danger,
 }: { icon: React.ComponentType<{ size?: number }>; label: string; onClick: () => void; danger?: boolean }) {
