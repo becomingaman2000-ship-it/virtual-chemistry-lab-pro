@@ -131,7 +131,7 @@ const RULES: [RegExp, string[]][] = [
 
 /** Materials that are really reagents, data sources or samples, not glassware. */
 const NON_APPARATUS =
-  /acid|limewater|distilled water|boiled water|nitrate reagent|ferricyanide|phenolphthalein|peroxide|catalase|alumina|spinach|buffer|caco|reagent array|standard naoh|ethanol|media|masses of|calculator|reference (table|data)|thermodynamic|bond reference|data portal|profile$|template|electrolyte|oil layer|mystery gas|unknown/i;
+  /acid|hcl|h₂so₄|hno₃|limewater|distilled water|boiled water|nitrate reagent|ferricyanide|phenolphthalein|peroxide|catalase|alumina|spinach|buffer|caco|reagent array|standard naoh|ethanol|media|masses of|calculator|reference (table|data)|thermodynamic|bond reference|data portal|profile$|template|electrolyte|oil layer|mystery gas|unknown/i;
 
 export function resolveMaterial(material: string): string[] {
   const n = norm(material);
