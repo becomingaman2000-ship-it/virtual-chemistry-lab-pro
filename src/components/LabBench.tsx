@@ -1433,21 +1433,65 @@ export function LabBench() {
                   </button>
                 </div>
                 <p className="mt-2 text-[12px] text-muted-foreground">{experiment.objective}</p>
-                <div className="mt-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-turquoise">Procedure</div>
-                  <ol className="mt-1 space-y-1 text-[12px] text-foreground/80">
-                    {experiment.steps.map((s, i) => (
+
+                <BriefSection title="Safety & risk assessment">
+                  <ul className="space-y-1">
+                    {procedure.safety.map((s, i) => <li key={i} className="leading-snug">· {s}</li>)}
+                  </ul>
+                </BriefSection>
+
+                <BriefSection title={`Apparatus (${requiredApparatus.length}) — tap to place`}>
+                  <div className="grid gap-1">
+                    {requiredApparatus.map((a) => (
+                      <button
+                        key={a.id}
+                        onClick={() => placeApparatusById(a.id)}
+                        className="flex items-center gap-2 rounded-lg border border-border/40 bg-background/60 px-2 py-1.5 text-left text-[11px] hover:border-turquoise/60"
+                      >
+                        <span className="h-4 w-4 shrink-0 rounded border border-border/50" style={{ background: a.fill }} />
+                        <span className="truncate">{a.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </BriefSection>
+
+                <BriefSection title="Setting up">
+                  <ol className="space-y-1">
+                    {procedure.setup.map((s, i) => <li key={i} className="leading-snug">{i + 1}. {s}</li>)}
+                  </ol>
+                </BriefSection>
+
+                <BriefSection title="Method" defaultOpen>
+                  <ol className="space-y-1.5">
+                    {procedure.method.map((s, i) => (
                       <li key={i} className="flex gap-1.5">
                         <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-turquoise/20 text-[9px] font-bold">{i + 1}</span>
-                        <span className="leading-snug">{s}</span>
+                        <span className="leading-snug">
+                          {s.text}
+                          {s.detail && <span className="mt-0.5 block text-[11px] italic text-muted-foreground">{s.detail}</span>}
+                        </span>
                       </li>
                     ))}
                   </ol>
-                </div>
-                <div className="mt-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-turquoise">Expected result</div>
-                  <p className="mt-1 text-[12px] text-foreground/80">{experiment.expectedResult}</p>
-                </div>
+                </BriefSection>
+
+                <BriefSection title="What to record">
+                  <ul className="space-y-1">
+                    {procedure.recording.map((s, i) => <li key={i} className="leading-snug">· {s}</li>)}
+                  </ul>
+                </BriefSection>
+
+                <BriefSection title="Results & analysis">
+                  <ul className="space-y-1">
+                    {procedure.analysis.map((s, i) => <li key={i} className="leading-snug">· {s}</li>)}
+                  </ul>
+                </BriefSection>
+
+                <BriefSection title="Clearing away">
+                  <ul className="space-y-1">
+                    {procedure.cleanup.map((s, i) => <li key={i} className="leading-snug">· {s}</li>)}
+                  </ul>
+                </BriefSection>
                 {applicableChemicals.length > 0 && (
                   <div className="mt-3">
                     <div className="text-[10px] font-semibold uppercase tracking-widest text-turquoise">Required reagents</div>
