@@ -2122,13 +2122,6 @@ function BriefSection({
   );
 }
 
-function CtxHeaderUnused({ label }: { label: string }) {
-  return (
-    <div className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-      {label}
-    </div>
-  );
-}
 function CtxItem({
   icon: Icon, label, onClick, danger,
 }: { icon: React.ComponentType<{ size?: number }>; label: string; onClick: () => void; danger?: boolean }) {
