@@ -2102,6 +2102,33 @@ function CtxHeader({ label }: { label: string }) {
     </div>
   );
 }
+
+/** Collapsible block inside the experiment brief drawer. */
+function BriefSection({
+  title, children, defaultOpen = false,
+}: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="mt-3 border-t border-border/40 pt-2">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-1 text-left text-[10px] font-semibold uppercase tracking-widest text-turquoise"
+      >
+        <ChevronRight size={11} className={`transition-transform ${open ? "rotate-90" : ""}`} />
+        {title}
+      </button>
+      {open && <div className="mt-1.5 text-[12px] text-foreground/80">{children}</div>}
+    </div>
+  );
+}
+
+function CtxHeaderUnused({ label }: { label: string }) {
+  return (
+    <div className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+      {label}
+    </div>
+  );
+}
 function CtxItem({
   icon: Icon, label, onClick, danger,
 }: { icon: React.ComponentType<{ size?: number }>; label: string; onClick: () => void; danger?: boolean }) {
