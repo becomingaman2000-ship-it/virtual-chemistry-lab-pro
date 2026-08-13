@@ -1,0 +1,1 @@
+import{t as e}from"./ComingSoon-DAx4Maft.js";import{c as t}from"./index-KZ2BFqb_.js";var n=t(),r=()=>(0,n.jsx)(e,{label:`Contact`,piece:`More`,note:`Contact form coming soon. Meanwhile, reach out via Project X channels.`});export{r as component};

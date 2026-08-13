@@ -1,1 +1,0 @@
-import{c as e,r as t}from"./index-BBkb-VzP.js";var n=e();function r({children:e}){return(0,n.jsx)(t.div,{initial:{opacity:0,y:12,filter:`blur(6px)`},animate:{opacity:1,y:0,filter:`blur(0px)`},exit:{opacity:0,y:-8,filter:`blur(4px)`},transition:{duration:.5,ease:[.2,.8,.2,1]},children:e})}export{r as t};

@@ -41,37 +41,37 @@ export interface FlameSpec {
 export const FLAMES: FlameSpec[] = [
   {
     id: "bunsen-blue", label: "Bunsen — air hole open", short: "Blue (roaring)",
-    maxTemp: 700, ramp: 6, color: "#7fc4ff", outerColor: "rgba(60,120,255,0.55)",
+    maxTemp: 700, ramp: 1.05, color: "#7fc4ff", outerColor: "rgba(60,120,255,0.55)",
     sooty: false, openFlame: true,
     note: "Roaring blue flame, ~1500 °C at the tip. Standard for strong heating and flame tests.",
   },
   {
     id: "bunsen-yellow", label: "Bunsen — air hole closed", short: "Yellow (safety)",
-    maxTemp: 380, ramp: 3, color: "#ffc14d", outerColor: "rgba(255,150,40,0.55)",
+    maxTemp: 380, ramp: 0.7, color: "#ffc14d", outerColor: "rgba(255,150,40,0.55)",
     sooty: true, openFlame: true,
     note: "Luminous safety flame. Cooler, and deposits soot on the vessel.",
   },
   {
     id: "spirit-lamp", label: "Spirit lamp", short: "Spirit lamp",
-    maxTemp: 300, ramp: 2.2, color: "#ffd9a0", outerColor: "rgba(255,190,110,0.45)",
+    maxTemp: 300, ramp: 0.55, color: "#ffd9a0", outerColor: "rgba(255,190,110,0.45)",
     sooty: false, openFlame: true,
     note: "Ethanol wick flame. Gentle, portable, used where no gas tap is available.",
   },
   {
     id: "match", label: "Splint / match", short: "Splint",
-    maxTemp: 180, ramp: 5, color: "#ffb347", outerColor: "rgba(255,140,60,0.5)",
+    maxTemp: 180, ramp: 0.9, color: "#ffb347", outerColor: "rgba(255,140,60,0.5)",
     sooty: true, openFlame: true,
     note: "Momentary flame — for lighting gases and the glowing/lighted splint tests.",
   },
   {
     id: "hotplate", label: "Hot plate", short: "Hot plate",
-    maxTemp: 340, ramp: 2.5, color: "#ff7a45", outerColor: "rgba(255,90,40,0.28)",
+    maxTemp: 340, ramp: 0.6, color: "#ff7a45", outerColor: "rgba(255,90,40,0.28)",
     sooty: false, openFlame: false,
     note: "Electrical element. No naked flame, so it is safe with flammable solvents.",
   },
   {
     id: "water-bath", label: "Water bath", short: "Water bath",
-    maxTemp: 100, ramp: 1.6, color: "#9fd8ff", outerColor: "rgba(140,210,255,0.3)",
+    maxTemp: 100, ramp: 0.4, color: "#9fd8ff", outerColor: "rgba(140,210,255,0.3)",
     sooty: false, openFlame: false,
     note: "Cannot exceed 100 °C. Required for warming ethanol and other flammables.",
   },
@@ -174,6 +174,19 @@ export interface PhysicsInput {
   sealed: boolean;
   /** ticks the vessel has already been dry while heated */
   dryTicks: number;
+  /**
+   * Boiling heat points. Starts at 1 the moment the contents reach their
+   * boiling point, then +1 every second while they stay boiling. Evaporation
+   * rate scales with this so a full boil-dry takes at least ~2 minutes.
+   */
+  boilHeat?: number;
+}
+
+/** How strongly a flame heats a vessel given centre-to-centre distance (px). */
+export function flameIntensity(distancePx: number): number {
+  if (distancePx <= 28) return 1;
+  if (distancePx >= 160) return 0;
+  return Math.max(0, 1 - (distancePx - 28) / 132);
 }
 
 export interface PhysicsOutput {
@@ -190,7 +203,7 @@ export interface PhysicsOutput {
  * Mutates `state.substanceIds` when contents evaporate.
  */
 export function stepPhysics(input: PhysicsInput, pressure: number): PhysicsOutput {
-  const { state, shape, flame, sealed } = input;
+  const { state, shape, flame, sealed, boilHeat } = input;
   const hazards: Hazard[] = [];
   const limits = vesselLimits(shape);
   const ids = Object.keys(state.substanceIds).filter((k) => state.substanceIds[k] > 0);
@@ -227,25 +240,40 @@ export function stepPhysics(input: PhysicsInput, pressure: number): PhysicsOutpu
     }
   }
 
-  /* --- 3. boiling → evaporation → boiled dry --- */
+  /* --- 3. boiling → evaporation → boiled dry ---
+   * Heat points start at 1 and rise by 1 each second of continuous boiling.
+   * Rate is shared across all boiling substances so extra reagents do not
+   * empty the vessel faster. Calibrated so ~10 ml lasts at least 2 minutes
+   * even as heat points climb (tick ≈ 350 ms).
+   */
   if (volume > 0) {
-    let lost = 0;
-    for (const id of ids) {
+    const boilingIds = ids.filter((id) => {
       const chem = getChemical(id);
       const bp = chem.boilingPoint ?? (chem.state === "solid" ? 900 : 100);
-      if (state.temperature >= bp) {
-        const rate = Math.min(3, 0.4 + (state.temperature - bp) / 40);
-        const take = Math.min(state.substanceIds[id], rate);
+      return state.temperature >= bp;
+    });
+    if (boilingIds.length) {
+      const heatPts = Math.max(1, boilHeat || 1);
+      const minBp = Math.min(
+        ...boilingIds.map((id) => getChemical(id).boilingPoint ?? 100),
+      );
+      const superheat = Math.max(0, state.temperature - minBp);
+      const rate = 0.0005 * heatPts * (1 + superheat / 400);
+      const boilVol = boilingIds.reduce((s, id) => s + state.substanceIds[id], 0);
+      let lost = 0;
+      for (const id of boilingIds) {
+        const share = boilVol > 0 ? state.substanceIds[id] / boilVol : 1 / boilingIds.length;
+        const take = Math.min(state.substanceIds[id], rate * share);
         state.substanceIds[id] -= take;
         lost += take;
       }
-    }
-    if (lost > 0) {
-      evaporated += lost;
-      hazards.push({
-        kind: "evaporating",
-        message: `Contents are boiling off — ${lost.toFixed(1)} ml lost as vapour.`,
-      });
+      if (lost > 0) {
+        evaporated += lost;
+        hazards.push({
+          kind: "evaporating",
+          message: `Boiling (heat ${heatPts}) — ${lost.toFixed(2)} ml lost as vapour.`,
+        });
+      }
     }
   }
 
