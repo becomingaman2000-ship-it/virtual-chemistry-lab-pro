@@ -28,9 +28,19 @@ This repo is set up for **GitHub Pages** — no paid host required.
 ### One-time setup
 
 1. Merge this branch to `main`.
-2. In the GitHub repo: **Settings → Pages → Build and deployment → Source → GitHub Actions**.
-3. Push to `main` (or run the **Deploy to GitHub Pages** workflow manually).
-4. The site will be at:
+2. Copy the workflow into place (GitHub requires this path):
+
+   ```bash
+   mkdir -p .github/workflows
+   cp docs/deploy-pages.yml .github/workflows/deploy-pages.yml
+   git add .github/workflows/deploy-pages.yml
+   git commit -m "Add GitHub Pages workflow"
+   git push
+   ```
+
+3. In the GitHub repo: **Settings → Pages → Build and deployment → Source → GitHub Actions**.
+4. Push to `main` (or run the **Deploy to GitHub Pages** workflow manually).
+5. The site will be at:
 
    `https://<your-username>.github.io/virtual-chemistry-lab-pro/`
 
