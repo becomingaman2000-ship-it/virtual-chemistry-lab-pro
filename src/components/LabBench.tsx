@@ -262,7 +262,7 @@ export function LabBench() {
   const [experimentId, setExperimentId] = useState(1);
   const experiment: SyllabusExperiment =
     COMPLETE_SYLLABUS_EXPERIMENTS.find((e) => e.id === experimentId) ?? COMPLETE_SYLLABUS_EXPERIMENTS[0];
-  const [mode, setMode] = useState<Mode>("manual");
+  const [mode, setMode] = useState<Mode>("practice");
 
   const applicableExperiments = useMemo(
     () => COMPLETE_SYLLABUS_EXPERIMENTS.filter((e) => {
@@ -1553,7 +1553,7 @@ export function LabBench() {
             const isH = app.role === "heat";
             return (
               <div
-                className="glass-strong fixed z-[160] min-w-[230px] max-h-[min(70vh,420px)] overflow-y-auto overscroll-contain rounded-2xl border border-border/50 p-1 text-[12.5px] shadow-elegant"
+                className="glass-strong fixed z-[160] min-w-[230px] max-h-[min(70vh,420px)] overflow-y-scroll overscroll-contain rounded-2xl border border-border/50 p-1 text-[12.5px] shadow-elegant [scrollbar-width:thin]"
                 style={{
                   left: Math.max(8, Math.min(ctxMenu.x, window.innerWidth - 250)),
                   top: Math.max(8, Math.min(ctxMenu.y, window.innerHeight - 180)),
@@ -1692,10 +1692,10 @@ export function LabBench() {
           {mode === "practice" && (
             <button
               onClick={practiceAutoSetup}
-              className="inline-flex items-center gap-1 rounded-full bg-turquoise/20 px-3 py-1.5 text-[12px] font-semibold text-turquoise ring-1 ring-turquoise/50 hover:bg-turquoise/30"
+              className="inline-flex items-center gap-1 rounded-full bg-turquoise px-3.5 py-2 text-[12.5px] font-bold text-charcoal shadow ring-2 ring-turquoise/60 hover:opacity-90"
               title="Place every required item and reagent so you can just observe, then score"
             >
-              <Wand2 size={12} /> Practice auto-setup
+              <Wand2 size={13} /> Practice auto-setup
             </button>
           )}
           <button

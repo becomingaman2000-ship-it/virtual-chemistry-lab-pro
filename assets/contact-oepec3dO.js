@@ -1,1 +1,0 @@
-import{t as e}from"./ComingSoon-vo_3i2Wv.js";import{c as t}from"./index-By7-Qjrh.js";var n=t(),r=()=>(0,n.jsx)(e,{label:`Contact`,piece:`More`,note:`Contact form coming soon. Meanwhile, reach out via Project X channels.`});export{r as component};
