@@ -2,6 +2,8 @@
 
 A fully interactive virtual chemistry laboratory for ZIMSEC and Cambridge students. Drag, mix, react, and observe — all in the browser.
 
+**Live:** https://becomingaman2000-ship-it.github.io/virtual-chemistry-lab-pro/
+
 ## Local development
 
 ```bash
@@ -23,26 +25,19 @@ The deployable files land in `.output/public` (plus a `404.html` SPA fallback an
 
 ## Host for free on GitHub Pages
 
-This repo is set up for **GitHub Pages** — no paid host required.
+The live site is:
 
-### One-time setup
+**https://becomingaman2000-ship-it.github.io/virtual-chemistry-lab-pro/**
 
-1. Merge this branch to `main`.
-2. Copy the workflow into place (GitHub requires this path):
+GitHub Pages serves this branch's root (`index.html`, `assets/`, and the prerendered route folders). Republish after a source change with:
 
-   ```bash
-   mkdir -p .github/workflows
-   cp docs/deploy-pages.yml .github/workflows/deploy-pages.yml
-   git add .github/workflows/deploy-pages.yml
-   git commit -m "Add GitHub Pages workflow"
-   git push
-   ```
-
-3. In the GitHub repo: **Settings → Pages → Build and deployment → Source → GitHub Actions**.
-4. Push to `main` (or run the **Deploy to GitHub Pages** workflow manually).
-5. The site will be at:
-
-   `https://<your-username>.github.io/virtual-chemistry-lab-pro/`
+```bash
+BASE_PATH=/virtual-chemistry-lab-pro/ bun run build
+bun run publish:pages
+git add index.html 404.html _shell.html .nojekyll favicon.ico assets about apparatus atom-builder chemicals contact lab periodic-table pricing structures syllabus
+git commit -m "Publish GitHub Pages build"
+git push
+```
 
 ### Custom domain or `username.github.io` root site
 

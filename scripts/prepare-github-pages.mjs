@@ -11,5 +11,10 @@ if (!shell) {
 }
 
 copyFileSync(shell, join(outDir, "404.html"));
+const indexPath = join(outDir, "index.html");
+if (!existsSync(indexPath)) {
+  copyFileSync(shell, indexPath);
+  console.log(`prepare-github-pages: wrote index.html from ${shell}`);
+}
 writeFileSync(join(outDir, ".nojekyll"), "");
 console.log(`prepare-github-pages: copied ${shell} → 404.html and wrote .nojekyll`);
