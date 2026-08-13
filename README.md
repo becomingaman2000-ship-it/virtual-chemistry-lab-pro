@@ -34,7 +34,7 @@ GitHub Pages serves this branch's root (`index.html`, `assets/`, and the prerend
 ```bash
 BASE_PATH=/virtual-chemistry-lab-pro/ bun run build
 bun run publish:pages
-git add index.html 404.html _shell.html .nojekyll favicon.ico assets about apparatus atom-builder chemicals contact lab periodic-table pricing structures syllabus
+git add index.html 404.html _shell.html .nojekyll favicon.ico favicon.svg apple-touch-icon.png aurora-logo.png og-image.jpg assets about apparatus atom-builder chemicals contact lab periodic-table pricing structures syllabus
 git commit -m "Publish GitHub Pages build"
 git push
 ```

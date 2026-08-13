@@ -57,6 +57,9 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   );
 }
 
+const asset = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
+const ogImage = "https://becomingaman2000-ship-it.github.io/virtual-chemistry-lab-pro/og-image.jpg";
+
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
@@ -68,11 +71,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:title", content: "ChemVM — Virtual Chemistry Laboratory" },
       { property: "og:description", content: "Experience chemistry without limits. Curriculum-aligned virtual lab for ZIMSEC & Cambridge." },
       { property: "og:type", content: "website" },
+      { property: "og:image", content: ogImage },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:image", content: ogImage },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
-      { rel: "icon", href: `${import.meta.env.BASE_URL}favicon.ico`, type: "image/x-icon" },
+      { rel: "icon", href: asset("favicon.svg"), type: "image/svg+xml" },
+      { rel: "icon", href: asset("favicon.ico"), type: "image/x-icon" },
+      { rel: "apple-touch-icon", href: asset("apple-touch-icon.png") },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
