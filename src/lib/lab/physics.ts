@@ -233,8 +233,10 @@ export function stepPhysics(input: PhysicsInput, pressure: number): PhysicsOutpu
           burnColor: combustionColor(id),
           message: `${chem.name} ignited in the open flame — use a water bath for flammable liquids.`,
         });
-        state.substanceIds[id] = Math.max(0, state.substanceIds[id] - 2.5);
-        evaporated += 2.5;
+        // Keep the flame event, but do not empty the vessel in a few ticks.
+        const burn = Math.min(state.substanceIds[id], 0.04);
+        state.substanceIds[id] -= burn;
+        evaporated += burn;
         break;
       }
     }
@@ -258,7 +260,9 @@ export function stepPhysics(input: PhysicsInput, pressure: number): PhysicsOutpu
         ...boilingIds.map((id) => getChemical(id).boilingPoint ?? 100),
       );
       const superheat = Math.max(0, state.temperature - minBp);
-      const rate = 0.0005 * heatPts * (1 + superheat / 400);
+      // Heat +1 / s raises the boil, but a typical 10–25 ml fill still
+      // takes at least ~2 minutes to go dry (tick ≈ 350 ms).
+      const rate = Math.min(0.012, 0.00032 * heatPts * (1 + superheat / 500));
       const boilVol = boilingIds.reduce((s, id) => s + state.substanceIds[id], 0);
       let lost = 0;
       for (const id of boilingIds) {

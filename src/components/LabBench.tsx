@@ -634,7 +634,13 @@ export function LabBench() {
 
         // Boiling heat points: start at 1, +1 every second while boiling.
         const volNow = Object.values(app.state.substanceIds).reduce((s, v) => s + v, 0);
-        const boilingNow = volNow > 0 && app.state.temperature >= 95;
+        const boilingIdsNow = Object.keys(app.state.substanceIds).filter((id) => {
+          if (!(app.state!.substanceIds[id] > 0)) return false;
+          const chem = getChemical(id);
+          const bp = chem.boilingPoint ?? (chem.state === "solid" ? 900 : 100);
+          return app.state!.temperature >= bp;
+        });
+        const boilingNow = volNow > 0 && boilingIdsNow.length > 0;
         if (boilingNow) {
           if (app.boilHeat < 1) app.boilHeat = 1;
           app.boilMs += 350;
@@ -1173,8 +1179,7 @@ export function LabBench() {
 
   const onPieceContext = (e: React.MouseEvent, app: PlacedApparatus) => {
     e.preventDefault();
-    const rect = benchRef.current!.getBoundingClientRect();
-    setCtxMenu({ x: e.clientX - rect.left, y: e.clientY - rect.top, uid: app.uid });
+    setCtxMenu({ x: e.clientX, y: e.clientY, uid: app.uid });
     setSelectedUid(app.uid);
     if (!selectedUids.includes(app.uid)) setSelectedUids([app.uid]);
   };
@@ -1548,15 +1553,16 @@ export function LabBench() {
             const isH = app.role === "heat";
             return (
               <div
-                className="glass-strong absolute z-50 min-w-[220px] max-h-[min(72vh,420px)] overflow-y-auto overscroll-contain rounded-2xl border border-border/50 p-1 text-[12.5px] shadow-elegant"
+                className="glass-strong fixed z-[160] min-w-[230px] max-h-[min(70vh,420px)] overflow-y-auto overscroll-contain rounded-2xl border border-border/50 p-1 text-[12.5px] shadow-elegant"
                 style={{
-                  left: Math.max(8, Math.min(ctxMenu.x, (benchRef.current?.clientWidth ?? 800) - 236)),
-                  top: Math.max(8, Math.min(ctxMenu.y, (benchRef.current?.clientHeight ?? 500) - 160)),
+                  left: Math.max(8, Math.min(ctxMenu.x, window.innerWidth - 250)),
+                  top: Math.max(8, Math.min(ctxMenu.y, window.innerHeight - 180)),
                 }}
                 onClick={(e) => e.stopPropagation()}
                 onWheel={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
               >
-                <CtxHeader label={app.item.name} />
+                <CtxHeader label={`${app.item.name} · scroll for more`} />
                 {isC && <CtxItem icon={Ruler} label="Measure & add reagent…" onClick={() => { setSidebarTab("chemicals"); setMessage("Pick a reagent in the sidebar — you'll be asked for the amount."); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={Snowflake} label="Chill (freeze)" onClick={() => { chillContainer(app.uid); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={Droplets} label="Empty container" onClick={() => { emptyContainer(app.uid); setCtxMenu(null); }} />}
@@ -1845,6 +1851,19 @@ export function LabBench() {
         </AnimatePresence>
 
       </section>
+
+      {(mode === "practice" || mode === "test") && !report && (
+        <button
+          onClick={scoreAttempt}
+          className="fixed bottom-5 right-5 z-[180] inline-flex items-center gap-2 rounded-full bg-navy px-5 py-3 text-[14px] font-bold text-peach shadow-elegant ring-2 ring-peach/60 hover:opacity-90 dark:bg-turquoise dark:text-charcoal"
+        >
+          <Play size={16} />
+          Score my attempt
+          <span className="rounded-full bg-peach/20 px-2 py-0.5 font-mono text-[11px] dark:bg-charcoal/20">
+            {liveScore.percent}%
+          </span>
+        </button>
+      )}
 
       {/* ================= REPORT MODAL ================= */}
       {/* ---------- measured-amount dialog ---------- */}
