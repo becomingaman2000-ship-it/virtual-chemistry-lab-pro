@@ -31,3 +31,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local QA screenshots (not part of the app)
+.review-shots/

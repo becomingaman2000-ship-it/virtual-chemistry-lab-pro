@@ -27,6 +27,58 @@ export interface ReportInput {
   rawTotal?: number;
 }
 
+/* ------------------------------------------------------------------
+   WinAnsi safety.
+
+   pdf-lib's StandardFonts are WinAnsi-encoded and throw on any character
+   outside that set — including every superscript, subscript and reaction
+   arrow used in chemistry. Since 84 of the 115 experiments contain such
+   characters, report generation used to fail outright ("WinAnsi cannot
+   encode ⁺"). Transliterate to a WinAnsi-safe equivalent before drawing.
+------------------------------------------------------------------- */
+
+const SUPERSCRIPTS: Record<string, string> = {
+  "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5",
+  "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9", "⁺": "+", "⁻": "-",
+  "⁼": "=", "⁽": "(", "⁾": ")", "ⁿ": "n",
+};
+
+const SUBSCRIPTS: Record<string, string> = {
+  "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4", "₅": "5",
+  "₆": "6", "₇": "7", "₈": "8", "₉": "9", "₊": "+", "₋": "-",
+  "₌": "=", "₍": "(", "₎": ")", "ₙ": "n", "ₓ": "x",
+};
+
+const SYMBOLS: Record<string, string> = {
+  "→": "->", "←": "<-", "↔": "<->", "⇌": "<=>", "⇋": "<=>", "⇒": "=>",
+  "↑": "(g)", "↓": "(s)", "≡": "=", "≈": "~", "≠": "!=", "≤": "<=", "≥": ">=",
+  "–": "-", "—": "-", "‑": "-", "‒": "-", "―": "-",
+  "“": '"', "”": '"', "„": '"', "‘": "'", "’": "'", "‚": "'",
+  "…": "...", "•": "-", "·": "-", "∙": "-", "◦": "-", "‧": "-",
+  "×": "x", "÷": "/", "∆": "delta", "Δ": "delta", "√": "sqrt",
+  "∞": "inf", "α": "alpha", "β": "beta", "γ": "gamma", "λ": "lambda",
+  "μ": "u", "µ": "u", "π": "pi", "σ": "sigma", "ω": "omega", "Ω": "ohm",
+  "‰": "o/oo", "™": "(TM)", "\u00a0": " ", "\u2009": " ", "\u202f": " ", "\u200b": "",
+};
+
+/** Convert a string to something the WinAnsi standard fonts can render. */
+export function winAnsiSafe(input: string): string {
+  if (!input) return "";
+  let out = "";
+  for (const ch of input) {
+    const mapped = SUPERSCRIPTS[ch] ?? SUBSCRIPTS[ch] ?? SYMBOLS[ch];
+    if (mapped !== undefined) { out += mapped; continue; }
+    const code = ch.codePointAt(0) ?? 0;
+    // Printable ASCII and the Latin-1 range are safe in WinAnsi.
+    if (code === 9 || code === 10 || (code >= 32 && code <= 126) || (code >= 160 && code <= 255)) {
+      out += ch;
+    } else {
+      out += "?";
+    }
+  }
+  return out;
+}
+
 const M = 48;
 const NAVY = rgb(0.08, 0.16, 0.32);
 const TURQ = rgb(0.14, 0.62, 0.62);
@@ -66,11 +118,13 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number): stri
 
 function drawText(cur: Cursor, doc: PDFDocument, text: string, font: PDFFont, size: number, color = NAVY, indent = 0): Cursor {
   const maxW = 595 - M * 2 - indent;
-  const lines = wrap(text, font, size, maxW);
+  // Sanitize before measuring: font.widthOfTextAtSize throws on non-WinAnsi
+  // characters just as drawText does.
+  const lines = wrap(winAnsiSafe(text), font, size, maxW);
   let c = cur;
   for (const ln of lines) {
     c = ensure(doc, c, size + 4);
-    c.page.drawText(ln, { x: M + indent, y: c.y - size, size, font, color });
+    c.page.drawText(winAnsiSafe(ln), { x: M + indent, y: c.y - size, size, font, color });
     c.y -= size + 4;
   }
   return c;
@@ -79,7 +133,7 @@ function drawText(cur: Cursor, doc: PDFDocument, text: string, font: PDFFont, si
 function heading(cur: Cursor, doc: PDFDocument, text: string, font: PDFFont): Cursor {
   let c = ensure(doc, cur, 30);
   c.y -= 8;
-  c.page.drawText(text.toUpperCase(), { x: M, y: c.y - 12, size: 11, font, color: TURQ });
+  c.page.drawText(winAnsiSafe(text.toUpperCase()), { x: M, y: c.y - 12, size: 11, font, color: TURQ });
   c.y -= 16;
   c.page.drawLine({ start: { x: M, y: c.y }, end: { x: 595 - M, y: c.y }, thickness: 0.6, color: TURQ });
   c.y -= 10;
@@ -96,9 +150,9 @@ export async function generateReportPdf(input: ReportInput): Promise<Uint8Array>
 
   // Header band
   cur.page.drawRectangle({ x: 0, y: 842 - 90, width: 595, height: 90, color: NAVY });
-  cur.page.drawText("CHEMVM · LAB REPORT", { x: M, y: 842 - 40, size: 10, font: bold, color: rgb(0.98, 0.88, 0.75) });
-  cur.page.drawText(input.experiment.title, { x: M, y: 842 - 62, size: 17, font: bold, color: rgb(1, 1, 1) });
-  cur.page.drawText(`Experiment #${input.experiment.id}  ·  ${input.syllabus.board} (${input.syllabus.level})`, {
+  cur.page.drawText(winAnsiSafe("CHEMVM · LAB REPORT"), { x: M, y: 842 - 40, size: 10, font: bold, color: rgb(0.98, 0.88, 0.75) });
+  cur.page.drawText(winAnsiSafe(input.experiment.title), { x: M, y: 842 - 62, size: 17, font: bold, color: rgb(1, 1, 1) });
+  cur.page.drawText(winAnsiSafe(`Experiment #${input.experiment.id}  ·  ${input.syllabus.board} (${input.syllabus.level})`), {
     x: M, y: 842 - 80, size: 9, font, color: rgb(0.85, 0.9, 0.95),
   });
   cur.y = 842 - 110;
@@ -107,24 +161,24 @@ export async function generateReportPdf(input: ReportInput): Promise<Uint8Array>
   cur = ensure(doc, cur, 60);
   cur.page.drawRectangle({ x: M, y: cur.y - 56, width: 595 - M * 2, height: 56, color: rgb(1, 1, 1), borderColor: TURQ, borderWidth: 0.5 });
   const rowY = cur.y - 20;
-  cur.page.drawText("STUDENT", { x: M + 12, y: rowY, size: 8, font: bold, color: TURQ });
-  cur.page.drawText(input.student.name || "—", { x: M + 12, y: rowY - 14, size: 11, font: bold, color: NAVY });
-  cur.page.drawText("LEVEL", { x: M + 220, y: rowY, size: 8, font: bold, color: TURQ });
-  cur.page.drawText(input.student.level || "—", { x: M + 220, y: rowY - 14, size: 11, font: bold, color: NAVY });
-  cur.page.drawText("DATE", { x: M + 380, y: rowY, size: 8, font: bold, color: TURQ });
-  cur.page.drawText(input.student.date, { x: M + 380, y: rowY - 14, size: 11, font: bold, color: NAVY });
+  cur.page.drawText(winAnsiSafe("STUDENT"), { x: M + 12, y: rowY, size: 8, font: bold, color: TURQ });
+  cur.page.drawText(winAnsiSafe(input.student.name || "—"), { x: M + 12, y: rowY - 14, size: 11, font: bold, color: NAVY });
+  cur.page.drawText(winAnsiSafe("LEVEL"), { x: M + 220, y: rowY, size: 8, font: bold, color: TURQ });
+  cur.page.drawText(winAnsiSafe(input.student.level || "—"), { x: M + 220, y: rowY - 14, size: 11, font: bold, color: NAVY });
+  cur.page.drawText(winAnsiSafe("DATE"), { x: M + 380, y: rowY, size: 8, font: bold, color: TURQ });
+  cur.page.drawText(winAnsiSafe(input.student.date), { x: M + 380, y: rowY - 14, size: 11, font: bold, color: NAVY });
   cur.y -= 68;
 
   // Score panel
   cur = ensure(doc, cur, 80);
   cur.page.drawRectangle({ x: M, y: cur.y - 72, width: 595 - M * 2, height: 72, color: NAVY });
-  cur.page.drawText("FINAL MARK", { x: M + 16, y: cur.y - 20, size: 9, font: bold, color: rgb(0.85, 0.9, 0.95) });
-  cur.page.drawText(`${input.percent}%`, { x: M + 16, y: cur.y - 56, size: 36, font: bold, color: rgb(0.98, 0.88, 0.75) });
-  cur.page.drawText("GRADE", { x: M + 180, y: cur.y - 20, size: 9, font: bold, color: rgb(0.85, 0.9, 0.95) });
-  cur.page.drawText(input.grade, { x: M + 180, y: cur.y - 44, size: 20, font: bold, color: rgb(1, 1, 1) });
-  cur.page.drawText(input.band, { x: M + 180, y: cur.y - 60, size: 9, font: italic, color: rgb(0.85, 0.9, 0.95) });
+  cur.page.drawText(winAnsiSafe("FINAL MARK"), { x: M + 16, y: cur.y - 20, size: 9, font: bold, color: rgb(0.85, 0.9, 0.95) });
+  cur.page.drawText(winAnsiSafe(`${input.percent}%`), { x: M + 16, y: cur.y - 56, size: 36, font: bold, color: rgb(0.98, 0.88, 0.75) });
+  cur.page.drawText(winAnsiSafe("GRADE"), { x: M + 180, y: cur.y - 20, size: 9, font: bold, color: rgb(0.85, 0.9, 0.95) });
+  cur.page.drawText(winAnsiSafe(input.grade), { x: M + 180, y: cur.y - 44, size: 20, font: bold, color: rgb(1, 1, 1) });
+  cur.page.drawText(winAnsiSafe(input.band), { x: M + 180, y: cur.y - 60, size: 9, font: italic, color: rgb(0.85, 0.9, 0.95) });
   if (input.rawTotal) {
-    cur.page.drawText(`${input.rawScore} / ${input.rawTotal} weighted marks`, {
+    cur.page.drawText(winAnsiSafe(`${input.rawScore} / ${input.rawTotal} weighted marks`), {
       x: M + 320, y: cur.y - 40, size: 10, font, color: rgb(0.85, 0.9, 0.95),
     });
   }
@@ -167,7 +221,7 @@ export async function generateReportPdf(input: ReportInput): Promise<Uint8Array>
   if (input.readings?.length) {
     cur = heading(cur, doc, "Table of Results", bold);
     cur = ensure(doc, cur, 16);
-    cur.page.drawText("#   VESSEL / ACTION            T(°C)   VOL(ml)   pH      OBSERVATION", {
+    cur.page.drawText(winAnsiSafe("#   VESSEL / ACTION            T(°C)   VOL(ml)   pH      OBSERVATION"), {
       x: M, y: cur.y - 9, size: 8, font: bold, color: TURQ,
     });
     cur.y -= 16;
@@ -175,7 +229,7 @@ export async function generateReportPdf(input: ReportInput): Promise<Uint8Array>
       cur = ensure(doc, cur, 14);
       const head = `${String(i + 1).padStart(2, "0")}  ${r.vessel} — ${r.action}`.slice(0, 40).padEnd(42, " ");
       const nums = `${String(r.temperature).padEnd(8)}${String(r.volume).padEnd(10)}${String(r.pH).padEnd(8)}`;
-      cur.page.drawText(head + nums, { x: M, y: cur.y - 9, size: 8, font, color: NAVY });
+      cur.page.drawText(winAnsiSafe(head + nums), { x: M, y: cur.y - 9, size: 8, font, color: NAVY });
       cur.y -= 11;
       cur = drawText(cur, doc, r.observation, italic, 8, GREY, 16);
     });
@@ -236,8 +290,8 @@ export async function generateReportPdf(input: ReportInput): Promise<Uint8Array>
   // Footer on every page
   const pages = doc.getPages();
   pages.forEach((p, i) => {
-    p.drawText(`ChemVM · Generated ${new Date().toLocaleString()}`, { x: M, y: 24, size: 8, font, color: GREY });
-    p.drawText(`Page ${i + 1} of ${pages.length}`, { x: 595 - M - 60, y: 24, size: 8, font, color: GREY });
+    p.drawText(winAnsiSafe(`ChemVM · Generated ${new Date().toLocaleString()}`), { x: M, y: 24, size: 8, font, color: GREY });
+    p.drawText(winAnsiSafe(`Page ${i + 1} of ${pages.length}`), { x: 595 - M - 60, y: 24, size: 8, font, color: GREY });
   });
 
   return await doc.save();

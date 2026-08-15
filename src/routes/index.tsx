@@ -83,6 +83,29 @@ const animations = [
   { icon: Sparkles, label: "Color Change" },
 ];
 
+const howItWorks = [
+  {
+    step: 1,
+    title: "Pick a syllabus & experiment",
+    desc: "Choose your board and level — ZIMSEC, Cambridge, WAEC and more — then pick from the matching experiments. The brief lists aim, apparatus, reagents and safety notes.",
+  },
+  {
+    step: 2,
+    title: "Set up the bench",
+    desc: "Drag apparatus from the sidebar or hit Auto-setup to have the glassware and reagents laid out for you, dosed to each vessel's real capacity.",
+  },
+  {
+    step: 3,
+    title: "React, heat and measure",
+    desc: "Add reagents, light the Bunsen, take pH and temperature readings, and run flame, gas and indicator tests. Every observation lands in the results table.",
+  },
+  {
+    step: 4,
+    title: "Get marked, export the report",
+    desc: "Switch to Test mode to hide the answers, then score your attempt against the exam rubric and download a PDF lab report of the whole session.",
+  },
+];
+
 function HomePage() {
   return (
     <PageTransition>
@@ -103,19 +126,23 @@ function HomePage() {
               mix, react, and observe real chemical behavior from any device, anytime.
             </motion.p>
             <motion.div variants={fadeUp} className="mt-8 flex flex-wrap gap-3">
+              {/* The lab is free and needs no account, so "Start Free Trial"
+                  promised a signup flow that does not exist. */}
               <Link
                 to="/lab"
                 className="group inline-flex items-center gap-2 rounded-full bg-navy px-6 py-3 text-sm font-medium text-peach shadow-elegant transition hover:shadow-glow dark:bg-turquoise dark:text-charcoal"
               >
-                Start Free Trial
+                Open the Lab
                 <ArrowRight size={16} className="transition group-hover:translate-x-1" />
               </Link>
-              <Link
-                to="/lab"
+              {/* There is no demo video to play; this scrolls to the written
+                  walkthrough instead of pretending to open one. */}
+              <a
+                href="#how-it-works"
                 className="glass inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-medium"
               >
-                <PlayCircle size={16} /> Watch Demo
-              </Link>
+                <PlayCircle size={16} /> See how it works
+              </a>
             </motion.div>
             <motion.div variants={fadeUp} className="mt-10 flex flex-wrap gap-2">
               {badges.map((b) => (
@@ -141,6 +168,30 @@ function HomePage() {
           Built by <span className="font-semibold text-foreground">Project X</span> — engineered by one of the most capable software engineering teams working today.
         </div>
       </section>
+
+      {/* HOW IT WORKS — the target of the hero's "See how it works" link. */}
+      <Section id="how-it-works" eyebrow="How it works" title="From empty bench to marked report in four steps">
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+          {howItWorks.map(({ step, title, desc }) => (
+            <div key={step} className="glass hover-lift rounded-2xl p-6">
+              <div className="mb-3 inline-grid h-9 w-9 place-items-center rounded-full bg-aurora animate-aurora text-sm font-semibold text-white">
+                {step}
+              </div>
+              <h3 className="mb-1.5 text-base font-semibold" style={{ fontFamily: "var(--font-display)" }}>{title}</h3>
+              <p className="text-sm text-muted-foreground">{desc}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-8">
+          <Link
+            to="/lab"
+            className="group inline-flex items-center gap-2 rounded-full bg-navy px-6 py-3 text-sm font-medium text-peach shadow-elegant transition hover:shadow-glow dark:bg-turquoise dark:text-charcoal"
+          >
+            Try it now
+            <ArrowRight size={16} className="transition group-hover:translate-x-1" />
+          </Link>
+        </div>
+      </Section>
 
       {/* ABOUT */}
       <Section id="about" eyebrow="Who's behind ChemVM" title="Powered by Project X">

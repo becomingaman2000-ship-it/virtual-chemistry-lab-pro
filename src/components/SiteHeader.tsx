@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Moon, Sun, Menu, X, Globe } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AuroraLogo } from "./AuroraLogo";
 import { useTheme } from "./ThemeProvider";
@@ -22,6 +22,14 @@ export function SiteHeader() {
   const [open, setOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
 
+  // The site is prerendered to a single shared shell, so the server has no
+  // idea which route the visitor will land on. Applying the active-link style
+  // during SSR therefore guarantees a hydration mismatch on every page except
+  // the one that happened to be prerendered. Style the active link only after
+  // mount, when the router knows the real location.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   return (
     <header className="sticky top-0 z-50 px-4 pt-4">
       <div className="glass mx-auto flex max-w-7xl items-center justify-between rounded-2xl px-4 py-2.5 md:px-6">
@@ -34,8 +42,11 @@ export function SiteHeader() {
             <Link
               key={n.to}
               to={n.to}
+              // "/" is a prefix of every route, so without exact matching the
+              // Home link renders as active on all pages.
+              activeOptions={{ exact: n.to === "/" }}
               className="rounded-full px-3.5 py-1.5 text-sm text-foreground/75 transition hover:bg-foreground/5 hover:text-foreground"
-              activeProps={{ className: "bg-foreground/8 text-foreground font-medium" }}
+              activeProps={mounted ? { className: "bg-foreground/8 text-foreground font-medium" } : undefined}
             >
               {t(n.key)}
             </Link>

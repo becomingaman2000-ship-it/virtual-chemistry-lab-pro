@@ -33,13 +33,83 @@ export interface ReactionResult {
   newPH?: number;
   soundEffect?: "pop" | "fizz" | "success" | "splash" | "glass";
   isExplosive?: boolean;
+  /** True when nothing in the rule base matched: the mixture is genuinely
+   *  unreactive under these conditions rather than merely unimplemented. */
+  noVisibleChange?: boolean;
+}
+
+/* ------------------------------------------------------------------
+   Acid / base reference data used by the pH model.
+   `molarity` is the concentration the bench bottle is labelled with,
+   `protons`/`hydroxides` the basicity/acidity, and Ka/Kb drive the weak
+   species. Ordered strongest-first so the dominant species is easy to find.
+------------------------------------------------------------------- */
+interface AcidSpec { id: string; molarity: number; protons: number; strong: boolean; ka?: number; }
+interface BaseSpec { id: string; molarity: number; hydroxides: number; strong: boolean; kb?: number; }
+
+const ACID_SPECS: AcidSpec[] = [
+  { id: "h2so4_conc", molarity: 18.0, protons: 2, strong: true },
+  { id: "hcl_conc", molarity: 11.0, protons: 1, strong: true },
+  { id: "hno3_dilute", molarity: 1.0, protons: 1, strong: true },
+  { id: "h2so4_dilute", molarity: 1.0, protons: 2, strong: true },
+  { id: "hcl_dilute", molarity: 1.0, protons: 1, strong: true },
+  { id: "ethanoic_acid", molarity: 1.0, protons: 1, strong: false, ka: 1.8e-5 },
+  { id: "citric_acid_sol", molarity: 0.5, protons: 3, strong: false, ka: 7.4e-4 },
+  { id: "carbonic_acid", molarity: 0.1, protons: 2, strong: false, ka: 4.3e-7 },
+];
+
+const BASE_SPECS: BaseSpec[] = [
+  { id: "naoh_dilute", molarity: 1.0, hydroxides: 1, strong: true },
+  { id: "koh_sol", molarity: 0.1, hydroxides: 1, strong: true },
+  { id: "limewater", molarity: 0.02, hydroxides: 2, strong: true },
+  { id: "na2co3_sol", molarity: 1.0, hydroxides: 2, strong: false, kb: 2.1e-4 },
+  { id: "nahco3_sol", molarity: 1.0, hydroxides: 1, strong: false, kb: 2.3e-8 },
+  { id: "nh3_dilute", molarity: 1.0, hydroxides: 1, strong: false, kb: 1.8e-5 },
+];
+
+/** The species present in the greatest molar amount — it sets the pH regime. */
+function strongestPresent<T extends { id: string; molarity: number }>(
+  specs: T[],
+  getAmt: (id: string) => number,
+): T | undefined {
+  let best: T | undefined;
+  let bestMoles = 0;
+  for (const spec of specs) {
+    const moles = getAmt(spec.id) * spec.molarity;
+    if (moles > bestMoles) { bestMoles = moles; best = spec; }
+  }
+  return best;
 }
 
 // Compute the combined thermodynamic & chemical state of a container
-export function evaluateReaction(container: ContainerState): ReactionResult {
+export function evaluateReaction(container: ContainerState, activeExperimentId?: number): ReactionResult {
+  const out = evaluateReactionRules(container, activeExperimentId);
+  // A rule fired if it changed the message or produced any observable effect.
+  // Only then is the "no visible reaction" claim withdrawn.
+  const acted =
+    out.message !== NO_CHANGE_MESSAGE ||
+    out.successExperimentId !== undefined ||
+    out.newPrecipitate !== undefined ||
+    out.newGas !== undefined ||
+    out.newPH !== undefined ||
+    out.deltaTemperature !== undefined ||
+    out.isExplosive === true ||
+    container.flameColor !== undefined ||
+    container.hasSilverMirror === true;
+  out.noVisibleChange = !acted;
+  return out;
+}
+
+const NO_CHANGE_MESSAGE = "Substances mixed. No visible reaction under these conditions.";
+
+function evaluateReactionRules(container: ContainerState, activeExperimentId?: number): ReactionResult {
   const ids = Object.keys(container.substanceIds);
+  // Default to an honest null result. Claiming success for every mixture
+  // taught students that any two reagents "work"; 66 of the 111 bench
+  // chemicals have no rule here, and they should say so plainly.
   const result: ReactionResult = {
-    message: "Mixed substances successfully.",
+    message: NO_CHANGE_MESSAGE,
+    noVisibleChange: true,
   };
 
   if (ids.length === 0) return result;
@@ -167,48 +237,103 @@ export function evaluateReaction(container: ContainerState): ReactionResult {
     result.successExperimentId = 64;
   }
 
-  // 8. ACID-BASE NEUTRALIZATION & TITRATIONS (Experiment 21 & Enthalpy Exp 71)
-  const isAcid = has("hcl_dilute") || has("h2so4_dilute") || has("hcl_conc") || has("ethanoic_acid");
-  const isBase = has("naoh_dilute") || has("nh3_dilute") || has("na2co3_sol") || has("limewater");
-  
-  if (isAcid && isBase) {
-    // compute rough net Moles
-    let acidMoles = (getAmt("hcl_dilute") * 0.1) + (getAmt("h2so4_dilute") * 0.2) + (getAmt("ethanoic_acid") * 0.05);
-    let baseMoles = (getAmt("naoh_dilute") * 0.1) + (getAmt("na2co3_sol") * 0.1) + (getAmt("nh3_dilute") * 0.05);
-    
-    // exact pH computation
-    let totalV = container.currentVolume || 50;
-    let net = baseMoles - acidMoles;
-    let newPH = 7.0;
-    if (net > 0.005) newPH = 12.5;
-    else if (net < -0.005) newPH = 1.8;
-    else newPH = 7.0; // Perfect equivalence
+  // 8. ACID-BASE CHEMISTRY (Experiment 21 & Enthalpy Exp 71)
+  // A proper equilibrium model: every acid and base contributes moles of H+ or
+  // OH- scaled by its molarity and basicity/acidity, the excess is diluted into
+  // the real vessel volume, and weak species use their Ka/Kb. This runs for a
+  // lone acid or a lone base too — previously pH only ever changed when an acid
+  // and a base were both present, so a beaker of pure HCl still read pH 7.
+  const acidMolesIn = ACID_SPECS.reduce((sum, a) => sum + getAmt(a.id) / 1000 * a.molarity * a.protons, 0);
+  const baseMolesIn = BASE_SPECS.reduce((sum, b) => sum + getAmt(b.id) / 1000 * b.molarity * b.hydroxides, 0);
+  const isAcid = acidMolesIn > 0;
+  const isBase = baseMolesIn > 0;
 
-    result.newPH = newPH;
+  if (isAcid || isBase) {
+    const totalV = Math.max(container.currentVolume || 0, 1) / 1000; // litres
+    const net = baseMolesIn - acidMolesIn; // + => base in excess
+
+    // The species left in excess decides whether we use a strong or weak model.
+    const dominantAcid = strongestPresent(ACID_SPECS, getAmt);
+    const dominantBase = strongestPresent(BASE_SPECS, getAmt);
+
+    let newPH: number;
+    const excess = Math.abs(net) / totalV; // mol/dm3 of excess H+ or OH-
+
+    if (excess < 1e-7) {
+      // Equivalence point. A strong/strong titration lands on 7; a weak acid
+      // leaves a basic salt behind, a weak base an acidic one.
+      const weakAcid = dominantAcid && !dominantAcid.strong;
+      const weakBase = dominantBase && !dominantBase.strong;
+      if (weakAcid && !weakBase) newPH = 8.8;
+      else if (weakBase && !weakAcid) newPH = 5.2;
+      else newPH = 7.0;
+    } else if (net < 0) {
+      // Acid in excess
+      const spec = dominantAcid;
+      if (spec && !spec.strong) {
+        // Weak acid: [H+] = sqrt(Ka * C)
+        newPH = -Math.log10(Math.sqrt((spec.ka ?? 1.8e-5) * excess));
+      } else {
+        newPH = -Math.log10(excess);
+      }
+    } else {
+      // Base in excess
+      const spec = dominantBase;
+      if (spec && !spec.strong) {
+        // Weak base: [OH-] = sqrt(Kb * C)
+        newPH = 14 + Math.log10(Math.sqrt((spec.kb ?? 1.8e-5) * excess));
+      } else {
+        newPH = 14 + Math.log10(excess);
+      }
+    }
+
+    newPH = Math.max(0, Math.min(14, newPH));
+    result.newPH = Math.round(newPH * 100) / 100;
     
     // Indicators behavior
     if (has("phenolphthalein")) {
-      if (newPH >= 8.2) result.newColor = "rgba(255, 20, 147, 0.6)"; // Bright Magenta Pink
+      if (result.newPH >= 8.2) result.newColor = "rgba(255, 20, 147, 0.6)"; // Bright Magenta Pink
       else result.newColor = "rgba(240, 248, 255, 0.1)"; // Colorless
     } else if (has("methyl_orange")) {
-      if (newPH <= 3.5) result.newColor = "rgb(255, 0, 0)"; // Red
-      else if (newPH >= 4.5) result.newColor = "rgb(255, 215, 0)"; // Yellow
+      if (result.newPH <= 3.5) result.newColor = "rgb(255, 0, 0)"; // Red
+      else if (result.newPH >= 4.5) result.newColor = "rgb(255, 215, 0)"; // Yellow
       else result.newColor = "rgb(255, 140, 0)"; // Orange
     } else if (has("universal_indicator")) {
-      if (newPH <= 2) result.newColor = "rgb(255, 30, 30)"; // Red
-      else if (newPH <= 5) result.newColor = "rgb(255, 165, 0)"; // Orange
-      else if (newPH <= 7.5) result.newColor = "rgb(60, 179, 113)"; // Green
-      else if (newPH <= 11) result.newColor = "rgb(30, 144, 255)"; // Blue
+      if (result.newPH <= 2) result.newColor = "rgb(255, 30, 30)"; // Red
+      else if (result.newPH <= 5) result.newColor = "rgb(255, 165, 0)"; // Orange
+      else if (result.newPH <= 7.5) result.newColor = "rgb(60, 179, 113)"; // Green
+      else if (result.newPH <= 11) result.newColor = "rgb(30, 144, 255)"; // Blue
       else result.newColor = "rgb(138, 43, 226)"; // Violet
     }
 
-    // Heat of neutralization Delta T (Exp 71)
-    if (Math.abs(net) < 0.05 && totalV >= 40) {
-      result.deltaTemperature = +6.8;
-      result.successExperimentId = 71;
+    if (isAcid && isBase) {
+      // Heat of neutralisation: -57.3 kJ per mole of water formed for a
+      // strong acid + strong base. Scale by the moles actually neutralised and
+      // by the thermal mass of the mixture (4.18 J/g/K, 1 g per ml) instead of
+      // stamping on a fixed +6.8 that only appeared above 40 ml.
+      const molesNeutralised = Math.min(acidMolesIn, baseMolesIn);
+      const massGrams = Math.max(container.currentVolume || 0, 1);
+      const weakened = (dominantAcid && !dominantAcid.strong) || (dominantBase && !dominantBase.strong);
+      const enthalpy = weakened ? 52000 : 57300; // J/mol; weak species cost ionisation energy
+      const deltaT = (molesNeutralised * enthalpy) / (massGrams * 4.18);
+      if (deltaT > 0.05) {
+        result.deltaTemperature = Math.round(deltaT * 10) / 10;
+        result.successExperimentId = 71;
+      }
+      const state = Math.abs(net) / totalV < 1e-7
+        ? "The mixture has reached the equivalence point"
+        : net > 0 ? "Alkali is still in excess" : "Acid is still in excess";
+      result.message = `${state}. Measured pH ${result.newPH.toFixed(2)}${result.deltaTemperature ? `, temperature rose ${result.deltaTemperature.toFixed(1)} °C` : ""}.`;
+    } else {
+      // An earlier rule may already have reported the headline observation
+      // (effervescence, a precipitate, a colour change). The pH is extra
+      // information, so append it rather than overwriting the observation --
+      // "Acidic solution, pH 0.40" used to erase "Furious effervescence!".
+      const phNote = isAcid
+        ? `Acidic solution, pH ${result.newPH.toFixed(2)}.`
+        : `Alkaline solution, pH ${result.newPH.toFixed(2)}.`;
+      result.message = result.message === NO_CHANGE_MESSAGE ? phNote : `${result.message} ${phNote}`;
     }
-    
-    result.message = `Acid-base neutralization active. Current computed pH: ${newPH.toFixed(2)}.`;
   }
 
   // 9. PERMANGANATE REDOX (Experiment 24)
@@ -306,14 +431,22 @@ export function evaluateReaction(container: ContainerState): ReactionResult {
 
   // 13. UNIVERSAL DWSIM 115-EXPERIMENT PATTERN MATCHING FALLBACK
   if (!result.successExperimentId && ids.length >= 2) {
-    // Check if the current combination matching any experiment's required chemicals
-    for (const exp of COMPLETE_SYLLABUS_EXPERIMENTS) {
+    // Only ever auto-validate the experiment the student actually has open.
+    // Scanning the whole catalogue used to announce (and spoil the expected
+    // result of) an unrelated experiment that happened to share reagents.
+    const candidates = activeExperimentId
+      ? COMPLETE_SYLLABUS_EXPERIMENTS.filter((exp) => exp.id === activeExperimentId)
+      : [];
+
+    for (const exp of candidates) {
       if (exp.requiredChemicalIds.length >= 2) {
         // Are all required chemicals present?
         const allPresent = exp.requiredChemicalIds.every((reqId: string) => has(reqId));
         if (allPresent) {
           result.successExperimentId = exp.id;
-          result.message = `[DWSIM Auto-Validated] Executed reaction parameters for #${exp.id}: ${exp.title}. ${exp.expectedResult}`;
+          // Never restate expectedResult: that is the answer the student is
+          // being marked on. Confirm the setup instead.
+          result.message = `All reagents for #${exp.id} (${exp.title}) are now in the vessel. Observe carefully and record what you see.`;
           result.soundEffect = "success";
           break;
         }

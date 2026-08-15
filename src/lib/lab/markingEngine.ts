@@ -7,6 +7,7 @@
  * awarded that was not observed in the action log / readings.
  */
 
+import { CHEMICAL_DATABASE } from "@/lib/lab/dwsimChemicals";
 import type { SyllabusExperiment } from "@/lib/lab/experimentsCatalog";
 import type { Syllabus } from "@/data/syllabi";
 import type { ActionKind } from "@/data/experiments";
@@ -16,6 +17,12 @@ export interface EvidenceEntry {
   kind: string;
   label: string;
   experimentId?: number;
+  /**
+   * Chemical IDs this action actually involved. The rubric is written in terms
+   * of chemical IDs, so matching on this is exact — never try to recover the id
+   * by substring-matching the human-readable label.
+   */
+  chemicalIds?: string[];
 }
 
 export interface Reading {
@@ -52,6 +59,12 @@ export interface MarkingOutcome {
 
 const norm = (s: string) => s.toLowerCase().replace(/[_-]+/g, " ");
 
+/** Human-readable name for a chemical id, for rubric labels students can read. */
+function chemicalDisplayName(id: string) {
+  const chem = CHEMICAL_DATABASE[id];
+  return chem && chem.name !== id ? chem.name : id.replace(/_/g, " ");
+}
+
 function stepsText(exp: SyllabusExperiment) {
   return norm([exp.objective, ...(exp.steps ?? []), exp.expectedResult ?? ""].join(" "));
 }
@@ -73,11 +86,12 @@ export function buildRubric(exp: SyllabusExperiment): Omit<Criterion, "achieved"
   });
 
   for (const id of exp.requiredChemicalIds ?? []) {
+    const display = chemicalDisplayName(id);
     out.push({
       id: `chem:${id}`,
-      label: `Used the correct reagent: ${id.replace(/_/g, " ")}`,
+      label: `Used the correct reagent: ${display}`,
       kind: "add", marks: 8,
-      hint: `This experiment requires ${id.replace(/_/g, " ")}.`,
+      hint: `This experiment requires ${display}.`,
     });
   }
 
@@ -149,18 +163,27 @@ export interface MarkInput {
   experiment: SyllabusExperiment;
   syllabus: Syllabus | null;
   log: EvidenceEntry[];
-  readings: Reading[];
-  observations: string[];
+  readings?: Reading[];
+  observations?: string[];
   hazards: number;
   reactionMatched: boolean;
   measuredAdds: number;
 }
 
 export function markAttempt(input: MarkInput): MarkingOutcome {
-  const { experiment, syllabus, log, readings, observations, hazards, reactionMatched, measuredAdds } = input;
+  const { experiment, syllabus, log, hazards, reactionMatched, measuredAdds } = input;
+  // Defensive: these are supplied by several call sites, keep marking robust.
+  const readings = input.readings ?? [];
+  const observations = input.observations ?? [];
   const labels = log.map((l) => norm(l.label));
   const has = (kind: string) => log.some((l) => l.kind === kind);
   const labelHas = (...words: string[]) => labels.some((l) => words.some((w) => w.length > 2 && l.includes(w)));
+
+  /** Every chemical id the student actually put into a vessel. */
+  const usedChemicalIds = new Set<string>();
+  for (const entry of log) {
+    for (const id of entry.chemicalIds ?? []) usedChemicalIds.add(id);
+  }
 
   const criteria: Criterion[] = buildRubric(experiment).map((c) => {
     let achieved = false;
@@ -172,8 +195,12 @@ export function markAttempt(input: MarkInput): MarkingOutcome {
       achieved = !!firstPlace && (!firstAdd || firstPlace.ts <= firstAdd.ts);
       if (achieved) evidence = "Apparatus placed before reagents";
     } else if (c.id.startsWith("chem:")) {
-      const chem = norm(c.id.slice(5));
-      achieved = labelHas(chem, chem.split(" ")[0]);
+      // Match on the chemical IDs recorded against the action, NOT on the
+      // display-name text of the label. The old substring comparison (id
+      // "cacl2_sol" vs label "...Calcium Chloride Solution...") could never
+      // hit, which made ~69% of all reagent criteria unachievable.
+      const wanted = c.id.slice(5);
+      achieved = usedChemicalIds.has(wanted);
       if (achieved) evidence = "Reagent added on the bench";
     } else if (c.id === "measure") {
       achieved = measuredAdds > 0;

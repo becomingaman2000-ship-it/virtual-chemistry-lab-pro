@@ -155,14 +155,34 @@ export function runFlameTest(state: ContainerState, isHeated: boolean): TestOutc
       note: "A flame test needs a hot, roaring blue Bunsen flame — ignite the burner beneath the sample.",
     };
   }
-  const hit = FLAME_CATIONS.find((c) => c.match.some((m) => ids.includes(m)));
-  if (!hit) {
+  const hits = FLAME_CATIONS.filter((c) => c.match.some((m) => ids.includes(m)));
+  if (!hits.length) {
     return {
       ok: true,
       color: "#7aa7ff",
       observation: "No characteristic colour — the sample contains no Group 1/2 or copper cation.",
     };
   }
+  if (hits.length > 1) {
+    // A real flame test on a mixture is not a clean identification: the strongest
+    // emitter masks the others (sodium in particular swamps everything). Say so
+    // instead of silently reporting whichever cation happens to be listed first.
+    const sodium = hits.find((h) => h.ion === "Na⁺");
+    const dominant = sodium ?? hits[0];
+    const others = hits.filter((h) => h !== dominant).map((h) => h.ion).join(", ");
+    return {
+      ok: true,
+      color: dominant.color,
+      observation:
+        `Flame test inconclusive — the sample contains ${hits.length} flame-active cations ` +
+        `(${hits.map((h) => h.ion).join(", ")}). The ${dominant.name} of ${dominant.ion} dominates and masks ${others}.`,
+      note:
+        sodium
+          ? "Sodium contamination swamps a flame test. Clean the wire in concentrated HCl and test a single salt at a time; view potassium through cobalt-blue glass."
+          : "A flame test identifies one cation at a time. Empty the vessel and test each salt separately.",
+    };
+  }
+  const hit = hits[0];
   return {
     ok: true,
     color: hit.color,

@@ -28,7 +28,7 @@ import {
   Undo2, Redo2, Ruler, Lock, Unlock, AlertTriangle, Layers,
 } from "lucide-react";
 import { Wind, Magnet, Sparkles } from "lucide-react";
-import { Table2, ListChecks } from "lucide-react";
+import { Table2, ListChecks, Timer as TimerIcon } from "lucide-react";
 
 import { APPARATUS, CATEGORIES, type ApparatusItem, type ApparatusShape } from "@/data/apparatus";
 import { ApparatusSVG } from "@/components/ApparatusSVG";
@@ -55,6 +55,9 @@ import { buildProcedure } from "@/lib/lab/experimentProcedure";
 ============================================================ */
 
 type Mode = "manual" | "practice" | "test";
+
+/** Length of a Test-mode paper, in seconds. */
+const TEST_DURATION_S = 45 * 60;
 type SidebarTab = "apparatus" | "chemicals";
 
 type Role = "container" | "heat" | "support" | "measure" | "consumable" | "safety";
@@ -106,6 +109,8 @@ interface LogEntry {
   kind: "place" | "add" | "heat" | "cool" | "freeze" | "pour" | "observe" | "safety" | "reaction" | "connect";
   label: string;
   experimentId?: number;
+  /** Chemical IDs involved — the marking engine matches on these, not on `label`. */
+  chemicalIds?: string[];
 }
 
 /* ============================================================
@@ -141,6 +146,38 @@ function roleOf(item: ApparatusItem): Role {
   if (item.category === "Safety Equipment") return "safety";
   if (item.category === "Hand Tools" || item.shape === "paper") return "consumable";
   return "measure";
+}
+
+/**
+ * Reagents that are alternative samples for the same test rather than
+ * ingredients of one mixture. A flame-test experiment lists lithium, sodium,
+ * potassium, calcium… salts because you test each in turn — mixing them gives a
+ * meaningless result (and, historically, an instant overflow).
+ */
+const MUTUALLY_EXCLUSIVE_SAMPLES: string[][] = [
+  // Group 1 / 2 / copper flame-test salts
+  ["licl_sol", "nacl_sol", "nacl_solid", "kcl_sol", "cacl2_sol", "srcl2_sol", "bacl2_sol", "cuso4_sol"],
+  // Halide salts for the silver-nitrate series
+  ["nacl_sol", "nabr_sol", "nai_sol", "kcl_sol", "ki_solid"],
+];
+
+/**
+ * Pick the reagents auto-setup should actually pour: keep everything that
+ * combines, but at most one representative of each mutually-exclusive sample
+ * group so the demonstration stays chemically meaningful.
+ */
+function selectAutoSetupReagents(required: string[]): string[] {
+  const claimed = new Set<string>();
+  const out: string[] = [];
+  for (const id of required) {
+    const group = MUTUALLY_EXCLUSIVE_SAMPLES.find((g) => g.includes(id));
+    if (!group) { out.push(id); continue; }
+    const key = MUTUALLY_EXCLUSIVE_SAMPLES.indexOf(group).toString();
+    if (claimed.has(key)) continue;
+    claimed.add(key);
+    out.push(id);
+  }
+  return out;
 }
 
 function capacityOf(type: ContainerState["type"]): number {
@@ -227,11 +264,11 @@ function makePlaced(item: ApparatusItem, x: number, y: number, z: number): Place
   };
 }
 
-function runReactionOn(app: PlacedApparatus): ReactionResult | null {
+function runReactionOn(app: PlacedApparatus, activeExperimentId?: number): ReactionResult | null {
   if (!app.state) return null;
   const vol = Object.values(app.state.substanceIds).reduce((s, v) => s + v, 0);
   app.state.currentVolume = vol;
-  const res = evaluateReaction(app.state);
+  const res = evaluateReaction(app.state, activeExperimentId);
   if (res.newColor) app.state.color = res.newColor;
   if (res.newOpacity !== undefined) app.state.opacity = res.newOpacity;
   if (res.newPrecipitate) app.state.precipitate = res.newPrecipitate;
@@ -282,6 +319,18 @@ export function LabBench() {
     "Containers & Vessels": true,
   });
   const [briefOpen, setBriefOpen] = useState(true);
+  // In Test mode the brief is an answer sheet, so the method/analysis sections
+  // are withheld until the student switches back to Practice.
+  const hideAnswers = mode === "test";
+
+  /* -------- exam conditions (Test mode) --------
+     Test mode used to differ from Practice only by a label: the live running
+     score stayed on screen and there was no time pressure at all. A real
+     paper is timed and gives you no feedback until you hand it in, so Test
+     mode now runs a countdown and withholds the score until you submit. */
+  const [testRemaining, setTestRemaining] = useState(TEST_DURATION_S);
+  const [testStartedAt, setTestStartedAt] = useState<number | null>(null);
+  const testExpired = mode === "test" && testRemaining <= 0;
 
   /* -------- bench state -------- */
   const benchRef = useRef<HTMLDivElement | null>(null);
@@ -302,6 +351,8 @@ export function LabBench() {
 
   const pushLog = useCallback((entry: Omit<LogEntry, "ts">) => {
     setLog((l) => [{ ...entry, ts: Date.now() }, ...l].slice(0, 120));
+    // First recorded action starts the exam clock (no-op outside Test mode).
+    setTestStartedAt((prev) => prev ?? Date.now());
   }, []);
 
   /* -------- undo / redo history -------- */
@@ -515,7 +566,7 @@ export function LabBench() {
                 to.state.substanceIds[id] = (to.state.substanceIds[id] || 0) + amt;
               }
               to.state.temperature = (to.state.temperature + pour.temperature) / 2;
-              runReactionOn(to);
+              runReactionOn(to, experimentId);
             }
             pourRef.current = null;
             setPlaced((p2) => [...p2]);
@@ -681,7 +732,7 @@ export function LabBench() {
         }
 
         if (app.fx.exploding > 0) { app.fx.exploding -= 1; dirty = true; }
-        if (dirty && Object.keys(app.state.substanceIds).length > 0) runReactionOn(app);
+        if (dirty && Object.keys(app.state.substanceIds).length > 0) runReactionOn(app, experimentId);
       }
       if (dirty) setPlaced((p) => [...p]);
       if (notice) setMessage(notice);
@@ -826,7 +877,7 @@ export function LabBench() {
   const chillContainer = (uid: string) => {
     const app = placedRef.current.find((a) => a.uid === uid); if (!app?.state) return;
     app.state.temperature = Math.max(-15, app.state.temperature - 40);
-    if (Object.keys(app.state.substanceIds).length > 0) runReactionOn(app);
+    if (Object.keys(app.state.substanceIds).length > 0) runReactionOn(app, experimentId);
     pushLog({ kind: "freeze", label: `Chilled ${app.item.name} to ${app.state.temperature.toFixed(0)}°C` });
     setPlaced((p) => [...p]);
   };
@@ -847,7 +898,7 @@ export function LabBench() {
     commit();
     const unit = measurementUnit(chem.state);
     app.state.substanceIds[chem.id] = (app.state.substanceIds[chem.id] || 0) + amount;
-    const res = runReactionOn(app);
+    const res = runReactionOn(app, experimentId);
     measuredAddsRef.current += 1;
     if (res?.message) setMessage(res.message);
     pushLog({
@@ -856,6 +907,7 @@ export function LabBench() {
         ? `Measured ${amount} ${unit} ${chem.name} · ✔ ${res.message}`
         : `Measured ${amount} ${unit} of ${chem.name} into ${app.item.name}`,
       experimentId: res?.successExperimentId,
+      chemicalIds: [chem.id],
     });
     recordReading(app, `Added ${amount} ${unit} ${chem.name}`, res?.message ?? "Reagent added");
     setPlaced((p) => [...p]);
@@ -884,7 +936,7 @@ export function LabBench() {
       fromUid: from.uid, toUid: to.uid, progress: 0,
       color: blendLiquid(from.state), substanceIds: transfer, temperature: from.state.temperature,
     };
-    runReactionOn(from);
+    runReactionOn(from, experimentId);
     pushLog({ kind: "pour", label: `Poured from ${from.item.name} into ${to.item.name}` });
     setMessage(`Pouring ${from.item.name} → ${to.item.name}…`);
     setPlaced((p) => [...p]);
@@ -957,17 +1009,40 @@ export function LabBench() {
     }
 
     if (vessel?.state) {
-      for (const id of experiment.requiredChemicalIds) {
+      // Only ever pour reagents that belong together. Qualitative-analysis
+      // experiments list several mutually-exclusive cation salts (each is a
+      // separate trial, not one mixture) — dumping them all in one dish gave a
+      // meaningless mixture and an instantly-overflowing vessel.
+      const chosen = selectAutoSetupReagents(experiment.requiredChemicalIds);
+
+      // Size the doses to the vessel actually on the bench so auto-setup can
+      // never overflow the glassware it just placed.
+      const capacity = vessel.state.maxVolume;
+      const budget = capacity * 0.6;
+      const liquids = chosen.filter((c) => getChemical(c).state !== "solid").length;
+      const perLiquid = liquids > 0
+        ? Math.max(1, Math.min(10, Math.floor(budget / liquids)))
+        : 10;
+
+      for (const id of chosen) {
         const chem = getChemical(id);
-        const amount = chem.state === "solid" ? 2 : 10;
+        const amount = chem.state === "solid" ? 2 : perLiquid;
         vessel.state.substanceIds[chem.id] = (vessel.state.substanceIds[chem.id] || 0) + amount;
         measuredAddsRef.current += 1;
         pushLog({
           kind: "add",
           label: `Measured ${amount} ${measurementUnit(chem.state)} of ${chem.name} into ${vessel.item.name}`,
+          chemicalIds: [chem.id],
         });
       }
-      runReactionOn(vessel);
+      const skipped = experiment.requiredChemicalIds.length - chosen.length;
+      if (skipped > 0) {
+        pushLog({
+          kind: "observe",
+          label: `${skipped} further reagent(s) left in the rack — test them one at a time in a clean vessel.`,
+        });
+      }
+      runReactionOn(vessel, experimentId);
       setSelectedUid(vessel.uid);
       setSelectedUids([vessel.uid]);
     }
@@ -1042,14 +1117,16 @@ export function LabBench() {
     setReport(null); setLog([]); setReadings([]); setObservations([]);
     hazardsRef.current = 0; measuredAddsRef.current = 0;
     clearBench();
-    setMessage("Test reset — score cleared, bench empty. Start a fresh attempt.");
+    // Put the exam clock back to a full paper, unstarted.
+    setTestRemaining(TEST_DURATION_S); setTestStartedAt(null);
+    setMessage("Test reset — score cleared, bench empty, clock back to 45:00.");
   };
 
   const scoreAttempt = () => {
     const outcome = markAttempt({
       experiment,
       syllabus: currentSyllabus,
-      log: log.map((l) => ({ ts: l.ts, kind: l.kind, label: l.label, experimentId: l.experimentId })),
+      log: log.map((l) => ({ ts: l.ts, kind: l.kind, label: l.label, experimentId: l.experimentId, chemicalIds: l.chemicalIds })),
       readings,
       observations,
       hazards: hazardsRef.current,
@@ -1067,6 +1144,26 @@ export function LabBench() {
       rawTotal: outcome.rawTotal,
     });
   };
+
+  // Keep a stable handle so the countdown can auto-submit without re-arming
+  // the interval on every state change.
+  const scoreAttemptRef = useRef(scoreAttempt);
+  scoreAttemptRef.current = scoreAttempt;
+
+  // The clock only runs in Test mode, and only once the student has actually
+  // started working (first bench action), so opening the tab to look around
+  // does not silently burn their time.
+  useEffect(() => {
+    if (mode !== "test" || testStartedAt === null) return;
+    const t = window.setInterval(() => {
+      setTestRemaining((prev) => {
+        const next = Math.max(0, TEST_DURATION_S - Math.round((Date.now() - testStartedAt) / 1000));
+        if (next === 0 && prev > 0) scoreAttemptRef.current();
+        return next;
+      });
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [mode, testStartedAt]);
 
   const observeSelected = () => {
     const app = placedRef.current.find((a) => a.uid === selectedUid);
@@ -1095,7 +1192,7 @@ export function LabBench() {
       if (outcome.color && (outcome.removed?.length || outcome.added)) {
         app.state.color = outcome.color;
       }
-      runReactionOn(app);
+      runReactionOn(app, experimentId);
       setPlaced((p) => [...p]);
     }
     setTestResult({ title, outcome });
@@ -1248,13 +1345,19 @@ export function LabBench() {
   };
 
   const toggleGroup = (id: string) => setExpandedGroups((g) => ({ ...g, [id]: !g[id] }));
+  /**
+   * A search only filters *within* the accordions, so with every group
+   * collapsed a query like "hydroxide" updated the counts while the matching
+   * cards stayed hidden. Force groups open whenever a query is active.
+   */
+  const searching = query.trim().length > 0;
 
   const meta = metaFor(experimentId);
 
   const liveScore = useMemo(() => markAttempt({
     experiment,
     syllabus: currentSyllabus,
-    log: log.map((l) => ({ ts: l.ts, kind: l.kind, label: l.label, experimentId: l.experimentId })),
+    log: log.map((l) => ({ ts: l.ts, kind: l.kind, label: l.label, experimentId: l.experimentId, chemicalIds: l.chemicalIds })),
     readings,
     observations,
     hazards: hazardsRef.current,
@@ -1325,7 +1428,7 @@ export function LabBench() {
               {sidebarTab === "apparatus" ? (
                 <div className="space-y-1.5">
                   {apparatusByCat.map(([cat, items]) => {
-                    const open = expandedGroups[cat] ?? false;
+                    const open = searching || (expandedGroups[cat] ?? false);
                     return (
                       <section key={cat} className="rounded-xl border border-border/40 bg-background/30">
                         <button
@@ -1371,7 +1474,7 @@ export function LabBench() {
               ) : (
                 <div className="space-y-1.5">
                   {chemicalsByGroup.map(([grp, items]) => {
-                    const open = expandedGroups[grp] ?? grp === "Acids";
+                    const open = searching || (expandedGroups[grp] ?? grp === "Acids");
                     return (
                       <section key={grp} className="rounded-xl border border-border/40 bg-background/30">
                         <button
@@ -1429,7 +1532,22 @@ export function LabBench() {
           <div>
             <div className="text-[10px] font-mono uppercase tracking-widest text-turquoise">Virtual Lab</div>
             <div className="text-[15px] font-semibold leading-tight" style={{ fontFamily: "var(--font-display)" }}>
-              DWSIM Bench · {applicableExperiments.length} experiments
+              DWSIM Bench ·{" "}
+              <span
+                title={
+                  applicableExperiments.length === COMPLETE_SYLLABUS_EXPERIMENTS.length
+                    ? `All ${COMPLETE_SYLLABUS_EXPERIMENTS.length} experiments`
+                    : `${applicableExperiments.length} of ${COMPLETE_SYLLABUS_EXPERIMENTS.length} experiments match the selected syllabus level and category`
+                }
+              >
+                {/* Show the filtered count against the catalogue total. Showing
+                    the bare filtered number reads as "the app only has 50
+                    experiments" when an O-Level syllabus hides the 65 A-Level
+                    ones. */}
+                {applicableExperiments.length === COMPLETE_SYLLABUS_EXPERIMENTS.length
+                  ? `${COMPLETE_SYLLABUS_EXPERIMENTS.length} experiments`
+                  : `${applicableExperiments.length} of ${COMPLETE_SYLLABUS_EXPERIMENTS.length} experiments`}
+              </span>
             </div>
           </div>
           <div className="mx-2 flex rounded-full border border-border/50 bg-background/60 p-0.5">
@@ -1487,6 +1605,11 @@ export function LabBench() {
           </div>
         </div>
 
+        {/* bench + brief row: the brief used to be absolutely positioned
+            *inside* the bench, so on anything narrower than a wide desktop it
+            sat on top of the apparatus. It is now a flex sibling that takes its
+            own column on large screens and only overlays on small ones. */}
+        <div className="relative flex min-h-0 flex-1">
         {/* bench */}
         <div
           ref={benchRef}
@@ -1582,6 +1705,7 @@ export function LabBench() {
             );
           })()}
 
+        </div>
           {/* experiment brief drawer */}
           <AnimatePresence>
             {briefOpen && (
@@ -1590,7 +1714,7 @@ export function LabBench() {
                 animate={{ x: 0, opacity: 1 }}
                 exit={{ x: 60, opacity: 0 }}
                 transition={{ duration: 0.25 }}
-                className="glass-strong absolute right-3 top-14 z-20 w-[280px] max-h-[calc(100%-6rem)] overflow-y-auto rounded-2xl border border-border/50 p-3"
+                className="glass-strong absolute right-3 top-3 bottom-3 z-20 w-[280px] overflow-y-auto rounded-2xl border border-border/50 p-3 xl:static xl:my-0 xl:ml-2 xl:h-auto xl:w-[300px] xl:shrink-0 xl:self-stretch"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -1628,43 +1752,58 @@ export function LabBench() {
                   </div>
                 </BriefSection>
 
-                <BriefSection title="Setting up">
-                  <ol className="space-y-1">
-                    {procedure.setup.map((s, i) => <li key={i} className="leading-snug">{i + 1}. {s}</li>)}
-                  </ol>
-                </BriefSection>
+                {hideAnswers ? (
+                  <div className="mt-3 rounded-xl border border-turquoise/40 bg-turquoise/10 p-2.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-widest text-turquoise">
+                      Test conditions
+                    </div>
+                    <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">
+                      The method, expected observations and analysis are hidden while you are being assessed. Plan the
+                      experiment yourself from the aim, apparatus and reagents above. Switch to Practice mode if you
+                      want to be walked through it.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <BriefSection title="Setting up">
+                      <ol className="space-y-1">
+                        {procedure.setup.map((s, i) => <li key={i} className="leading-snug">{i + 1}. {s}</li>)}
+                      </ol>
+                    </BriefSection>
 
-                <BriefSection title="Method" defaultOpen>
-                  <ol className="space-y-1.5">
-                    {procedure.method.map((s, i) => (
-                      <li key={i} className="flex gap-1.5">
-                        <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-turquoise/20 text-[9px] font-bold">{i + 1}</span>
-                        <span className="leading-snug">
-                          {s.text}
-                          {s.detail && <span className="mt-0.5 block text-[11px] italic text-muted-foreground">{s.detail}</span>}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                </BriefSection>
+                    <BriefSection title="Method" defaultOpen>
+                      <ol className="space-y-1.5">
+                        {procedure.method.map((s, i) => (
+                          <li key={i} className="flex gap-1.5">
+                            <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-turquoise/20 text-[9px] font-bold">{i + 1}</span>
+                            <span className="leading-snug">
+                              {s.text}
+                              {s.detail && <span className="mt-0.5 block text-[11px] text-muted-foreground">{s.detail}</span>}
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    </BriefSection>
 
-                <BriefSection title="What to record">
-                  <ul className="space-y-1">
-                    {procedure.recording.map((s, i) => <li key={i} className="leading-snug">· {s}</li>)}
-                  </ul>
-                </BriefSection>
+                    <BriefSection title="What to record">
+                      <ul className="space-y-1">
+                        {procedure.recording.map((s, i) => <li key={i} className="leading-snug">· {s}</li>)}
+                      </ul>
+                    </BriefSection>
 
-                <BriefSection title="Results & analysis">
-                  <ul className="space-y-1">
-                    {procedure.analysis.map((s, i) => <li key={i} className="leading-snug">· {s}</li>)}
-                  </ul>
-                </BriefSection>
+                    <BriefSection title="Results & analysis">
+                      <ul className="space-y-1">
+                        {procedure.analysis.map((s, i) => <li key={i} className="leading-snug">· {s}</li>)}
+                      </ul>
+                    </BriefSection>
 
-                <BriefSection title="Clearing away">
-                  <ul className="space-y-1">
-                    {procedure.cleanup.map((s, i) => <li key={i} className="leading-snug">· {s}</li>)}
-                  </ul>
-                </BriefSection>
+                    <BriefSection title="Clearing away">
+                      <ul className="space-y-1">
+                        {procedure.cleanup.map((s, i) => <li key={i} className="leading-snug">· {s}</li>)}
+                      </ul>
+                    </BriefSection>
+                  </>
+                )}
                 {applicableChemicals.length > 0 && (
                   <div className="mt-3">
                     <div className="text-[10px] font-semibold uppercase tracking-widest text-turquoise">Required reagents</div>
@@ -1768,14 +1907,37 @@ export function LabBench() {
                     <RotateCw size={12} /> Reset test
                   </button>
                 )}
-                <span className="inline-flex rounded-full border border-turquoise/40 bg-turquoise/10 px-2.5 py-1 font-mono text-[11px] font-semibold text-turquoise">
-                  Live {liveScore.percent}% · {liveScore.rawScore}/{liveScore.rawTotal}
-                </span>
+                {/* Practice shows the running total as coaching; under test
+                    conditions that would be an open mark scheme, so the exam
+                    clock takes its place and the score waits for submission. */}
+                {mode === "practice" ? (
+                  <span className="inline-flex rounded-full border border-turquoise/40 bg-turquoise/10 px-2.5 py-1 font-mono text-[11px] font-semibold text-turquoise">
+                    Live {liveScore.percent}% · {liveScore.rawScore}/{liveScore.rawTotal}
+                  </span>
+                ) : (
+                  <span
+                    title={testStartedAt === null ? "Timer starts on your first action" : "Time remaining"}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-mono text-[11px] font-semibold ${
+                      testExpired
+                        ? "border-aurora-red/50 bg-aurora-red/15 text-aurora-red"
+                        : testRemaining <= 300
+                          ? "border-amber-500/50 bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                          : "border-border/50 bg-background/60 text-foreground/80"
+                    }`}
+                  >
+                    <TimerIcon size={11} />
+                    {testExpired
+                      ? "Time up"
+                      : `${String(Math.floor(testRemaining / 60)).padStart(2, "0")}:${String(testRemaining % 60).padStart(2, "0")}`}
+                    {testStartedAt === null && " · not started"}
+                  </span>
+                )}
                 <button
                   onClick={scoreAttempt}
-                  className="inline-flex items-center gap-1 rounded-full bg-navy px-4 py-2 text-[13px] font-bold text-peach shadow-elegant ring-2 ring-peach/50 hover:opacity-90 dark:bg-turquoise dark:text-charcoal"
+                  disabled={testExpired}
+                  className="inline-flex items-center gap-1 rounded-full bg-navy px-4 py-2 text-[13px] font-bold text-peach shadow-elegant ring-2 ring-peach/50 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-turquoise dark:text-charcoal"
                 >
-                  <Play size={14} /> Score my attempt
+                  <Play size={14} /> {mode === "test" ? "Submit for marking" : "Score my attempt"}
                 </button>
               </>
             )}
@@ -1852,18 +2014,11 @@ export function LabBench() {
 
       </section>
 
-      {(mode === "practice" || mode === "test") && !report && (
-        <button
-          onClick={scoreAttempt}
-          className="fixed bottom-5 right-5 z-[180] inline-flex items-center gap-2 rounded-full bg-navy px-5 py-3 text-[14px] font-bold text-peach shadow-elegant ring-2 ring-peach/60 hover:opacity-90 dark:bg-turquoise dark:text-charcoal"
-        >
-          <Play size={16} />
-          Score my attempt
-          <span className="rounded-full bg-peach/20 px-2 py-0.5 font-mono text-[11px] dark:bg-charcoal/20">
-            {liveScore.percent}%
-          </span>
-        </button>
-      )}
+      {/* The floating "Score my attempt" FAB that used to sit here was a second
+          copy of the toolbar button above — same handler, same label — and it
+          hovered over the bottom-right of the bench, covering apparatus. The
+          lab shell does not scroll, so the toolbar button is always in view and
+          one button is enough. */}
 
       {/* ================= REPORT MODAL ================= */}
       {/* ---------- measured-amount dialog ---------- */}
@@ -2528,6 +2683,7 @@ function LiquidBody({
       <motion.path
         d={surfacePath(w, ly, amp, 0)}
         fill="rgba(255,255,255,0.18)"
+        initial={{ d: surfacePath(w, ly, amp, 0) }}
         animate={{ d: [surfacePath(w, ly, amp, 0), surfacePath(w, ly, amp, Math.PI), surfacePath(w, ly, amp, Math.PI * 2)] }}
         transition={{ duration: 2.2, repeat: Infinity, ease: "linear" }}
       />
