@@ -41,6 +41,13 @@ export interface Criterion {
   label: string;
   kind: ActionKind;
   marks: number;
+  /**
+   * `marks` after the syllabus weighting for this action kind has been applied.
+   * `rawScore`/`rawTotal` are built from this value, so anything shown to the
+   * student (mark scheme table, PDF) must display `weightedMarks` — otherwise
+   * the line items visibly fail to add up to the headline total.
+   */
+  weightedMarks: number;
   achieved: boolean;
   evidence?: string;
   hint: string;
@@ -74,9 +81,11 @@ function mentions(text: string, words: string[]) {
 }
 
 /** Build the rubric this experiment should be marked against. */
-export function buildRubric(exp: SyllabusExperiment): Omit<Criterion, "achieved" | "evidence">[] {
+export type RubricItem = Omit<Criterion, "achieved" | "evidence" | "weightedMarks">;
+
+export function buildRubric(exp: SyllabusExperiment): RubricItem[] {
   const text = stepsText(exp);
-  const out: Omit<Criterion, "achieved" | "evidence">[] = [];
+  const out: RubricItem[] = [];
 
   out.push({
     id: "safety",
@@ -185,6 +194,8 @@ export function markAttempt(input: MarkInput): MarkingOutcome {
     for (const id of entry.chemicalIds ?? []) usedChemicalIds.add(id);
   }
 
+  const weight = (k: ActionKind) => (syllabus ? syllabus.weights[k] ?? 1 : 1);
+
   const criteria: Criterion[] = buildRubric(experiment).map((c) => {
     let achieved = false;
     let evidence: string | undefined;
@@ -228,16 +239,21 @@ export function markAttempt(input: MarkInput): MarkingOutcome {
       achieved = observations.length > 0 || has("observe");
       if (achieved) evidence = `${observations.length} written observation(s)`;
     } else if (c.id === "nohazard") {
-      achieved = hazards === 0;
-      if (!achieved) evidence = `${hazards} incident(s)`;
+      // This rewards working safely, not sitting on your hands: an untouched
+      // bench cannot cause an incident, so it must not earn the safety marks.
+      const didSomething = log.length > 0;
+      achieved = hazards === 0 && didSomething;
+      if (hazards > 0) evidence = `${hazards} incident(s)`;
+      else if (!didSomething) evidence = "no practical work attempted";
     }
 
-    return { ...c, achieved, evidence };
+    return { ...c, weightedMarks: Math.round(c.marks * weight(c.kind)), achieved, evidence };
   });
 
-  const weight = (k: ActionKind) => (syllabus ? syllabus.weights[k] ?? 1 : 1);
-  const rawTotal = criteria.reduce((s, c) => s + c.marks * weight(c.kind), 0);
-  const rawScore = criteria.reduce((s, c) => s + (c.achieved ? c.marks * weight(c.kind) : 0), 0);
+  // Totals are built from the same rounded line items the student is shown,
+  // so the mark scheme column always adds up to the headline figure.
+  const rawTotal = criteria.reduce((s, c) => s + c.weightedMarks, 0);
+  const rawScore = criteria.reduce((s, c) => s + (c.achieved ? c.weightedMarks : 0), 0);
   const percent = rawTotal > 0 ? Math.round((rawScore / rawTotal) * 100) : 0;
 
   const band = syllabus
@@ -251,7 +267,7 @@ export function markAttempt(input: MarkInput): MarkingOutcome {
     percent,
     grade: band.grade,
     descriptor: band.descriptor,
-    correct: criteria.filter((c) => c.achieved).map((c) => ({ label: `${c.label}${c.evidence ? ` - ${c.evidence}` : ""} (${c.marks})` })),
+    correct: criteria.filter((c) => c.achieved).map((c) => ({ label: `${c.label}${c.evidence ? ` - ${c.evidence}` : ""} (${c.weightedMarks})` })),
     missed: criteria.filter((c) => !c.achieved).map((c) => ({ label: `${c.label} - ${c.hint}` })),
   };
 }

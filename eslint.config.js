@@ -36,5 +36,11 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
+  {
+    // Node-only verification scripts: they deliberately build partial fixture
+    // objects for the marking engine, so structural `any` is expected here.
+    files: ["scripts/**/*.ts", "scripts/**/*.mjs"],
+    rules: { "@typescript-eslint/no-explicit-any": "off" },
+  },
   eslintPluginPrettier,
 );

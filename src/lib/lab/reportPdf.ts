@@ -257,7 +257,7 @@ export async function generateReportPdf(input: ReportInput): Promise<Uint8Array>
     input.criteria.forEach((c) => {
       cur = drawText(
         cur, doc,
-        `${c.achieved ? "[+]" : "[-]"} ${c.label} — ${c.achieved ? c.marks : 0}/${c.marks}`,
+        `${c.achieved ? "[+]" : "[-]"} ${c.label} — ${c.achieved ? c.weightedMarks : 0}/${c.weightedMarks}`,
         font, 9, c.achieved ? TURQ : RED, 6,
       );
     });

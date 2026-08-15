@@ -2334,7 +2334,7 @@ export function LabBench() {
                             <div className="text-[11px] text-turquoise/80">{c.evidence}</div>
                           )}
                         </td>
-                        <td className={`py-1 text-right tabular-nums ${c.achieved ? "text-turquoise" : "text-muted-foreground"}`}>{c.achieved ? c.marks : 0}/{c.marks}</td>
+                        <td className={`py-1 text-right tabular-nums ${c.achieved ? "text-turquoise" : "text-muted-foreground"}`}>{c.achieved ? c.weightedMarks : 0}/{c.weightedMarks}</td>
                       </tr>
                     ))}
                   </tbody>
