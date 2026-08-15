@@ -15,8 +15,9 @@
  */
 
 import {
-  useCallback, useEffect, useMemo, useRef, useState,
+  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Beaker, BookOpen, ChevronDown, ChevronRight,
@@ -838,6 +839,69 @@ export function LabBench() {
         ? `Ignited ${app.item.name} — ${flameSpec(app.flame).label}`
         : `Extinguished ${app.item.name}`,
     });
+  };
+
+  /**
+   * The ignited burner currently close enough underneath `uid` to heat it.
+   * Mirrors the proximity rule used by the heat-propagation loop.
+   */
+  const heatSourceFor = (uid: string) => {
+    const app = placedRef.current.find((a) => a.uid === uid);
+    if (!app?.state) return null;
+    const cx = app.x + app.item.width / 2;
+    const bottom = app.y + app.item.height;
+    return (
+      placedRef.current.find((h) => {
+        if (h.role !== "heat" || !h.ignited) return false;
+        const dy = h.y - bottom;
+        if (dy < -20) return false;
+        return flameIntensity(Math.hypot(h.x + h.item.width / 2 - cx, dy)) > 0.02;
+      }) ?? null
+    );
+  };
+
+  /**
+   * One-click heating from a vessel's own menu: right-clicking a beaker and
+   * asking for heat should just work. Reuses a burner already under the
+   * vessel, otherwise slides an unlit one into position, and only as a last
+   * resort places a new burner directly underneath before lighting it.
+   */
+  const toggleHeatFor = (uid: string) => {
+    const app = placedRef.current.find((a) => a.uid === uid);
+    if (!app?.state) return;
+
+    const lit = heatSourceFor(uid);
+    if (lit) {
+      setIgnite(lit.uid, false);
+      setMessage(`Heat removed from the ${app.item.name}.`);
+      return;
+    }
+
+    const cx = app.x + app.item.width / 2;
+    const bottom = app.y + app.item.height;
+    const burnerItem =
+      APPARATUS.find((a) => a.id === "bunsen") ?? APPARATUS.find((a) => roleOf(a) === "heat");
+    if (!burnerItem) {
+      setMessage("No burner is available in this apparatus set.");
+      return;
+    }
+
+    commit();
+    const idle = placedRef.current.find((h) => h.role === "heat" && !h.ignited);
+    const target = idle ?? makePlaced(burnerItem, 0, 0, placedRef.current.length);
+    target.x = cx - target.item.width / 2;
+    target.y = bottom - 2;
+    target.ignited = true;
+
+    if (idle) {
+      setPlaced((p) => [...p]);
+      setMessage(`Moved the ${target.item.name} under the ${app.item.name} and lit it.`);
+    } else {
+      setPlaced((p) => [...p, target]);
+      pushLog({ kind: "place", label: `Placed ${target.item.name}` });
+      setMessage(`Placed a lit ${target.item.name} under the ${app.item.name}.`);
+    }
+    pushLog({ kind: "heat", label: `Ignited ${target.item.name} — ${flameSpec(target.flame).label}` });
   };
 
   const setFlame = (uid: string, flame: FlameId) => {
@@ -1675,33 +1739,36 @@ export function LabBench() {
             const isC = !!app.state;
             const isH = app.role === "heat";
             return (
-              <div
-                className="glass-strong fixed z-[160] min-w-[230px] max-h-[min(70vh,420px)] overflow-y-scroll overscroll-contain rounded-2xl border border-border/50 p-1 text-[12.5px] shadow-elegant [scrollbar-width:thin]"
-                style={{
-                  left: Math.max(8, Math.min(ctxMenu.x, window.innerWidth - 250)),
-                  top: Math.max(8, Math.min(ctxMenu.y, window.innerHeight - 180)),
-                }}
-                onClick={(e) => e.stopPropagation()}
-                onWheel={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                <CtxHeader label={`${app.item.name} · scroll for more`} />
+              <CtxMenuSurface x={ctxMenu.x} y={ctxMenu.y} onDismiss={() => setCtxMenu(null)}>
+                <CtxHeader label={app.item.name} />
+
+                {/* Heating first: this is what people right-click a vessel for. */}
+                {isC && (
+                  <CtxItem
+                    icon={Flame}
+                    label={heatSourceFor(app.uid) ? (app.state?.isHeated ? "Stop heating" : "Heat over flame") : "Heat over flame (needs a burner)"}
+                    onClick={() => { toggleHeatFor(app.uid); setCtxMenu(null); }}
+                  />
+                )}
+                {isC && <CtxItem icon={Sparkles} label="Flame test" onClick={() => { doFlameTest(app.uid); setCtxMenu(null); }} />}
+                {isH && <CtxItem icon={Flame} label={app.ignited ? "Extinguish burner" : "Ignite burner"} onClick={() => { setIgnite(app.uid, !app.ignited); setCtxMenu(null); }} />}
+                {isH && <CtxItem icon={Flame} label="Choose flame…" onClick={() => { setFlamePicker(app.uid); setCtxMenu(null); }} />}
+                {(isC || isH) && <div className="my-1 h-px bg-border/50" />}
+
                 {isC && <CtxItem icon={Ruler} label="Measure & add reagent…" onClick={() => { setSidebarTab("chemicals"); setMessage("Pick a reagent in the sidebar — you'll be asked for the amount."); setCtxMenu(null); }} />}
-                {isC && <CtxItem icon={Snowflake} label="Chill (freeze)" onClick={() => { chillContainer(app.uid); setCtxMenu(null); }} />}
-                {isC && <CtxItem icon={Droplets} label="Empty container" onClick={() => { emptyContainer(app.uid); setCtxMenu(null); }} />}
-                {isC && <CtxItem icon={Wand2} label="Pour into…" onClick={() => { beginPour(app.uid); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={ThermometerSun} label="Observe" onClick={() => { observeSelected(); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={TestTube} label="Indicator test…" onClick={() => { setTestPanel({ kind: "indicator", uid: app.uid }); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={Wind} label="Test the gas…" onClick={() => { setTestPanel({ kind: "gas", uid: app.uid }); setCtxMenu(null); }} />}
-                {isC && <CtxItem icon={Sparkles} label="Flame test" onClick={() => { doFlameTest(app.uid); setCtxMenu(null); }} />}
+                {isC && <CtxItem icon={Wand2} label="Pour into…" onClick={() => { beginPour(app.uid); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={Magnet} label="Separate mixture…" onClick={() => { setTestPanel({ kind: "separate", uid: app.uid }); setCtxMenu(null); }} />}
+                {isC && <CtxItem icon={Snowflake} label="Chill (freeze)" onClick={() => { chillContainer(app.uid); setCtxMenu(null); }} />}
+                {isC && <CtxItem icon={Droplets} label="Empty container" onClick={() => { emptyContainer(app.uid); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={app.sealed ? Unlock : Lock} label={app.sealed ? "Remove stopper" : "Seal with stopper"} onClick={() => { toggleSeal(app.uid); setCtxMenu(null); }} />}
-                {isH && <CtxItem icon={Flame} label="Choose flame…" onClick={() => { setFlamePicker(app.uid); setCtxMenu(null); }} />}
-                {isH && <CtxItem icon={Flame} label={app.ignited ? "Extinguish" : "Ignite"} onClick={() => { setIgnite(app.uid, !app.ignited); setCtxMenu(null); }} />}
-                <CtxItem icon={RotateCw} label="Rotate 45° (R)" onClick={() => { rotateSelected(45); setCtxMenu(null); }} />
+
                 <div className="my-1 h-px bg-border/50" />
+                <CtxItem icon={RotateCw} label="Rotate 45° (R)" onClick={() => { rotateSelected(45); setCtxMenu(null); }} />
                 <CtxItem icon={Trash2} label="Remove from bench" danger onClick={() => { removePlaced(app.uid); setCtxMenu(null); }} />
-              </div>
+              </CtxMenuSurface>
             );
           })()}
 
@@ -2473,6 +2540,77 @@ function ActionBtn({
     >
       <Icon size={12} /> {label}
     </button>
+  );
+}
+
+/**
+ * Anchors the right-click menu to the pointer.
+ *
+ * The previous version clamped against hard-coded guesses (250 x 180) for its
+ * own size, so a tall menu opened near the bottom of the bench was pushed far
+ * from the cursor. This measures the rendered menu and only moves it when it
+ * would actually leave the viewport, flipping above/left of the pointer first
+ * so the menu always stays attached to the item that was clicked.
+ */
+function CtxMenuSurface({
+  x, y, children, onDismiss,
+}: {
+  x: number; y: number; children: React.ReactNode; onDismiss: () => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number }>({ left: x, top: y });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const M = 8;
+    const { width: w, height: h } = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    // Prefer down-right of the cursor; flip when there is not enough room.
+    let left = x;
+    if (x + w + M > vw) left = x - w >= M ? x - w : Math.max(M, vw - w - M);
+    let top = y;
+    if (y + h + M > vh) top = y - h >= M ? y - h : Math.max(M, vh - h - M);
+
+    setPos({ left: Math.max(M, left), top: Math.max(M, top) });
+  }, [x, y]);
+
+  useEffect(() => {
+    const close = () => onDismiss();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onDismiss();
+    // `true` = capture, so the menu closes even when a child stops propagation.
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", close, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onDismiss]);
+
+  // Rendered into <body>. Inside the bench the menu sits under ancestors with
+  // `backdrop-filter` (the .glass panel) and a transition `filter`, each of
+  // which becomes the containing block for `position: fixed` and shifted the
+  // menu ~345px away from the pointer. A portal escapes both.
+  // The menu only ever renders in response to a real right-click, so `document`
+  // exists by then; the guard is belt-and-braces for the prerender pass.
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      ref={ref}
+      className="glass-strong fixed z-[160] min-w-[230px] max-h-[min(70vh,420px)] overflow-y-auto overscroll-contain rounded-2xl border border-border/50 p-1 text-[12.5px] shadow-elegant [scrollbar-width:thin]"
+      style={{ left: pos.left, top: pos.top }}
+      onClick={(e) => e.stopPropagation()}
+      onWheel={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {children}
+    </div>,
+    document.body,
   );
 }
 
