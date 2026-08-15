@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Beaker, Flame, Wind, Droplets, X } from "lucide-react";
+import { Search, Beaker, Flame, Wind, Droplets, X, FlaskConical, Eye, ShieldCheck } from "lucide-react";
 import { CHEMICALS, CATEGORY_LABEL, HAZARD_LABEL, type Chemical, type Category } from "@/data/chemicals";
+import { CHEMICAL_DETAILS, type DetailStat } from "@/data/chemicalDetails";
 import { ChemicalVisual } from "./ChemicalVisual";
 
 const CATEGORY_ORDER: Category[] = [
@@ -162,6 +163,27 @@ function ChemCard({ chem, onOpen }: { chem: Chemical; onOpen: () => void }) {
 }
 
 function ChemicalModal({ chem, onClose }: { chem: Chemical; onClose: () => void }) {
+  const detail = CHEMICAL_DETAILS[chem.id];
+  const showUses = !(chem.category === "flame" && detail);
+  const stats = useMemo(() => {
+    const out: DetailStat[] = [];
+    const push = (label: string, value: string | null) => {
+      if (value) out.push({ label, value });
+    };
+    push("Molar mass", chem.molarMass ? `${chem.molarMass} g/mol` : null);
+    push("Density", chem.density ? `${chem.density} g/cm³` : null);
+    push("Melting pt", chem.mp != null ? `${chem.mp} °C` : null);
+    push("Boiling pt", chem.bp != null ? `${chem.bp} °C` : null);
+    push("Solubility", chem.solubility ?? null);
+    push("pH", chem.pH != null ? String(chem.pH) : null);
+    // Category-specific figures fill the gap where the generic constants
+    // do not apply — indicator ranges, flame wavelengths, gas densities.
+    for (const s of detail?.stats ?? []) {
+      if (!out.some((o) => o.label === s.label)) out.push(s);
+    }
+    return out;
+  }, [chem, detail]);
+
   return (
     <motion.div
       className="fixed inset-0 z-[70] grid place-items-center bg-charcoal/60 p-4 backdrop-blur-md"
@@ -176,7 +198,7 @@ function ChemicalModal({ chem, onClose }: { chem: Chemical; onClose: () => void 
         animate={{ y: 0, opacity: 1, scale: 1 }}
         exit={{ y: 20, opacity: 0, scale: 0.97 }}
         transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
-        className="glass-strong relative grid w-full max-w-3xl grid-cols-1 gap-6 rounded-3xl p-6 md:grid-cols-[280px_1fr]"
+        className="glass-strong relative grid max-h-[88vh] w-full max-w-3xl grid-cols-1 gap-6 overflow-y-auto rounded-3xl p-6 md:grid-cols-[280px_1fr] md:items-start"
       >
         <button
           onClick={onClose}
@@ -186,7 +208,7 @@ function ChemicalModal({ chem, onClose }: { chem: Chemical; onClose: () => void 
         </button>
 
         <div
-          className="relative grid aspect-square place-items-center rounded-2xl"
+          className="relative grid aspect-square place-items-center rounded-2xl md:sticky md:top-0"
           style={{ background: `radial-gradient(70% 70% at 50% 40%, ${chem.color}22, transparent 70%)` }}
         >
           <ChemicalVisual chem={chem} size={260} />
@@ -199,14 +221,26 @@ function ChemicalModal({ chem, onClose }: { chem: Chemical; onClose: () => void 
           <h3 className="mt-1 font-display text-3xl">{chem.name}</h3>
           <div className="mt-1 font-mono text-sm text-muted-foreground">{chem.formula}</div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-            <Stat label="Molar mass" value={chem.molarMass ? `${chem.molarMass} g/mol` : "—"} />
-            <Stat label="Density" value={chem.density ? `${chem.density} g/cm³` : "—"} />
-            <Stat label="Melting pt" value={chem.mp != null ? `${chem.mp} °C` : "—"} />
-            <Stat label="Boiling pt" value={chem.bp != null ? `${chem.bp} °C` : "—"} />
-            <Stat label="Solubility" value={chem.solubility ?? "—"} />
-            <Stat label="pH" value={chem.pH != null ? String(chem.pH) : "—"} />
-          </div>
+          {detail && (
+            <p className="mt-3 text-sm leading-relaxed text-foreground/85">{detail.appearance}</p>
+          )}
+          {detail?.odour && (
+            <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground/70">Odour: </span>
+              {detail.odour}
+            </p>
+          )}
+
+          {/* Only the constants this substance actually has, plus whatever its
+              category makes meaningful. A flame test has no boiling point, and
+              printing six dashes teaches nobody anything. */}
+          {stats.length > 0 && (
+            <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+              {stats.map((s) => (
+                <Stat key={s.label} label={s.label} value={s.value} />
+              ))}
+            </div>
+          )}
 
           {chem.hazards.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-1.5">
@@ -221,11 +255,33 @@ function ChemicalModal({ chem, onClose }: { chem: Chemical; onClose: () => void 
             </div>
           )}
 
-          <div className="mt-4 rounded-xl border border-border/50 bg-background/40 p-3 text-sm">
-            <div className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">Uses</div>
-            <p className="text-foreground/85">{chem.uses}</p>
-          </div>
+          {/* For flames the legacy `uses` string is just the colour again,
+              which the appearance line already says better. */}
+          {showUses && (
+            <div className="mt-4 rounded-xl border border-border/50 bg-background/40 p-3 text-sm">
+              <div className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">Uses</div>
+              <p className="text-foreground/85">{chem.uses}</p>
+            </div>
+          )}
           {chem.notes && <p className="mt-2 text-xs text-muted-foreground">{chem.notes}</p>}
+
+          {detail?.reactions && detail.reactions.length > 0 && (
+            <DetailList icon={FlaskConical} title="Characteristic reactions" items={detail.reactions} />
+          )}
+          {detail?.tests && detail.tests.length > 0 && (
+            <DetailList icon={Eye} title="How you identify it" items={detail.tests} />
+          )}
+          {detail?.safety && (
+            <div className="mt-3 flex gap-2 rounded-xl border border-aurora-red/30 bg-aurora-red/5 p-3">
+              <ShieldCheck size={14} className="mt-0.5 shrink-0 text-aurora-red" />
+              <div>
+                <div className="text-xs uppercase tracking-widest text-muted-foreground">
+                  Handling in the lab
+                </div>
+                <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85">{detail.safety}</p>
+              </div>
+            </div>
+          )}
 
           <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
             <span className="inline-block h-4 w-4 rounded border border-border/60" style={{ background: chem.color }} />
@@ -240,6 +296,33 @@ function ChemicalModal({ chem, onClose }: { chem: Chemical; onClose: () => void 
         </div>
       </motion.div>
     </motion.div>
+  );
+}
+
+function DetailList({
+  icon: Icon,
+  title,
+  items,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  title: string;
+  items: string[];
+}) {
+  return (
+    <div className="mt-3 rounded-xl border border-border/50 bg-background/40 p-3">
+      <div className="mb-1.5 flex items-center gap-1.5 text-xs uppercase tracking-widest text-muted-foreground">
+        <Icon size={12} className="text-turquoise" />
+        {title}
+      </div>
+      <ul className="space-y-1.5">
+        {items.map((t, i) => (
+          <li key={i} className="flex gap-2 text-[13px] leading-relaxed text-foreground/85">
+            <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-turquoise" />
+            <span className="min-w-0">{t}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
