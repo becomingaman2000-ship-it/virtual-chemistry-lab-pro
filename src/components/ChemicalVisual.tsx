@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { useMemo } from "react";
+import { useId } from "react";
 import type { Chemical } from "@/data/chemicals";
 
 /**
@@ -17,7 +17,15 @@ export function ChemicalVisual({
   chem: Chemical;
   size?: number;
 }) {
-  const gradId = useMemo(() => `grad-${chem.id}-${Math.random().toString(36).slice(2, 6)}`, [chem.id]);
+  // useId, not Math.random: this id lands in the DOM, so a random value gives
+  // the server-rendered markup and the client a different one — a hydration
+  // mismatch, and prerendered HTML that changes on every build for no reason.
+  //
+  // Strip everything outside [A-Za-z0-9_-] as well. Ids like "ca(oh)2" and
+  // "pb(no3)2" contain brackets, and a fill of url(#grad-ca(oh)2-…) is parsed
+  // as ending at the first inner ")", so those swatches rendered unfilled.
+  const safeId = chem.id.replace(/[^a-zA-Z0-9_-]/g, "-");
+  const gradId = `grad-${safeId}-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const clipId = `clip-${gradId}`;
   const glowId = `glow-${gradId}`;
 

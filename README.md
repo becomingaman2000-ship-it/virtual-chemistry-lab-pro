@@ -39,6 +39,16 @@ git commit -m "Publish GitHub Pages build"
 git push
 ```
 
+Forgetting the republish step is easy, and the result is a live site that
+disagrees with `src/` — that is exactly how a duplicate "Score my attempt"
+button survived on the deployed lab. CI runs `check:pages` on every push to
+catch it; you can run the same check yourself:
+
+```bash
+BASE_PATH=/virtual-chemistry-lab-pro/ bun run build
+bun run check:pages
+```
+
 ### Custom domain or `username.github.io` root site
 
 By default the build uses a project-site base path (`/virtual-chemistry-lab-pro/`).
@@ -63,5 +73,8 @@ bun run preview
 | `bun run dev` | Vite dev server |
 | `bun run build` | Static production build for GitHub Pages |
 | `bun run preview` | Preview the last Vite build |
+| `bun run check` | Rubric and data integrity checks |
+| `bun run publish:pages` | Copy the build to the repo root for Pages |
+| `bun run check:pages` | Fail if the published root is stale vs a fresh build |
 | `bun run lint` | ESLint |
 | `bun run format` | Prettier |
