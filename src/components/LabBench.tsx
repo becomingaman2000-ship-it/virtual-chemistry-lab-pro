@@ -107,7 +107,7 @@ interface PourStream {
 
 interface LogEntry {
   ts: number;
-  kind: "place" | "add" | "heat" | "cool" | "freeze" | "pour" | "observe" | "safety" | "reaction" | "connect";
+  kind: "place" | "add" | "heat" | "cool" | "freeze" | "empty" | "pour" | "observe" | "safety" | "reaction" | "connect";
   label: string;
   experimentId?: number;
   /** Chemical IDs involved — the marking engine matches on these, not on `label`. */
@@ -825,6 +825,8 @@ export function LabBench() {
     app.burning = null; app.dryTicks = 0; app.pressure = 0; app.boilHeat = 0; app.boilMs = 0;
     app.fx = { boiling: false, freezing: false, foaming: false, crystallising: false, exploding: 0, silverMirror: false };
     app.lastReaction = null;
+    pushLog({ kind: "empty", label: `Emptied and rinsed the ${app.item.name}` });
+    setMessage(`Emptied the ${app.item.name} — contents discarded, vessel rinsed.`);
     setPlaced((p) => [...p]);
   };
 
@@ -940,9 +942,18 @@ export function LabBench() {
 
   const chillContainer = (uid: string) => {
     const app = placedRef.current.find((a) => a.uid === uid); if (!app?.state) return;
+    const lit = heatSourceFor(uid);
+    if (lit) setIgnite(lit.uid, false);
     app.state.temperature = Math.max(-15, app.state.temperature - 40);
-    if (Object.keys(app.state.substanceIds).length > 0) runReactionOn(app, experimentId);
-    pushLog({ kind: "freeze", label: `Chilled ${app.item.name} to ${app.state.temperature.toFixed(0)}°C` });
+    const empty = Object.keys(app.state.substanceIds).length === 0;
+    if (!empty) runReactionOn(app, experimentId);
+    const temp = `${app.state.temperature.toFixed(0)}°C`;
+    pushLog({ kind: "freeze", label: `Chilled ${app.item.name} to ${temp}` });
+    setMessage(
+      empty
+        ? `Chilled the empty ${app.item.name} to ${temp}. Add a reagent to see an effect.`
+        : `Chilled the ${app.item.name} to ${temp}.`,
+    );
     setPlaced((p) => [...p]);
   };
 
