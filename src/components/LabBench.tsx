@@ -2589,13 +2589,19 @@ function CtxMenuSurface({
     const w = el.getBoundingClientRect().width;
     const h = Math.min(el.scrollHeight, avail);
 
-    // Prefer down-right of the cursor; flip when there is not enough room.
+    // Horizontally: prefer right of the cursor, flip left when it overflows.
     let left = x;
     if (x + w + M > vw) left = x - w >= M ? x - w : Math.max(M, vw - w - M);
-    let top = y;
-    if (y + h + M > vh) top = y - h >= M ? y - h : Math.max(M, vh - h - M);
 
-    setPos({ left: Math.max(M, left), top: Math.max(M, top), maxH: avail });
+    // Vertically: SHIFT the menu up only as far as it takes to fit, instead of
+    // flipping it wholesale above the pointer. The old flip put a 455px menu
+    // 453px above the click, so right-clicking a beaker near the bench floor
+    // opened the menu up by the toolbar — nowhere near the thing clicked.
+    // Clamping keeps the pointer inside the menu, so it stays visually
+    // attached to the apparatus it belongs to.
+    const top = Math.max(M, Math.min(y, vh - h - M));
+
+    setPos({ left: Math.max(M, left), top, maxH: avail });
   }, [x, y]);
 
   useEffect(() => {
