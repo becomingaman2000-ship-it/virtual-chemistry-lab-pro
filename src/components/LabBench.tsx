@@ -2569,14 +2569,25 @@ function CtxMenuSurface({
   x: number; y: number; children: React.ReactNode; onDismiss: () => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [pos, setPos] = useState<{ left: number; top: number }>({ left: x, top: y });
+  const [pos, setPos] = useState<{ left: number; top: number; maxH: number | null }>({
+    left: x, top: y, maxH: null,
+  });
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const M = 8;
-    const { width: w, height: h } = el.getBoundingClientRect();
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+
+    // Cap against the viewport, not a hard-coded 420px. That constant was
+    // shorter than the 13-entry container menu, so the menu scrolled and the
+    // last entry ("Remove from bench") was laid out BELOW the menu's own
+    // bottom edge: clicking it hit the bench behind, which counted as an
+    // outside click and just dismissed the menu. Measure the unclamped
+    // content via scrollHeight, then only scroll when it truly cannot fit.
+    const avail = vh - 2 * M;
+    const w = el.getBoundingClientRect().width;
+    const h = Math.min(el.scrollHeight, avail);
 
     // Prefer down-right of the cursor; flip when there is not enough room.
     let left = x;
@@ -2584,18 +2595,29 @@ function CtxMenuSurface({
     let top = y;
     if (y + h + M > vh) top = y - h >= M ? y - h : Math.max(M, vh - h - M);
 
-    setPos({ left: Math.max(M, left), top: Math.max(M, top) });
+    setPos({ left: Math.max(M, left), top: Math.max(M, top), maxH: avail });
   }, [x, y]);
 
   useEffect(() => {
+    // Dismiss on a pointerdown OUTSIDE the menu. This listens in the capture
+    // phase so an outside handler that stops propagation cannot keep the menu
+    // open, but it must test containment explicitly: capture on `window` runs
+    // before the event reaches the menu, so relying on the menu's own
+    // stopPropagation would unmount it on mouse-DOWN and the item would be
+    // gone before the click landed. Every entry was therefore a dead click
+    // with a real mouse, while a synthetic element.click() still "worked".
+    const onDown = (e: PointerEvent) => {
+      const el = ref.current;
+      if (el && e.target instanceof Node && el.contains(e.target)) return;
+      onDismiss();
+    };
     const close = () => onDismiss();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onDismiss();
-    // `true` = capture, so the menu closes even when a child stops propagation.
-    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("pointerdown", onDown, true);
     window.addEventListener("resize", close);
     window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("pointerdown", close, true);
+      window.removeEventListener("pointerdown", onDown, true);
       window.removeEventListener("resize", close);
       window.removeEventListener("keydown", onKey);
     };
@@ -2612,8 +2634,8 @@ function CtxMenuSurface({
   return createPortal(
     <div
       ref={ref}
-      className="glass-strong fixed z-[160] min-w-[230px] max-h-[min(70vh,420px)] overflow-y-auto overscroll-contain rounded-2xl border border-border/50 p-1 text-[12.5px] shadow-elegant [scrollbar-width:thin]"
-      style={{ left: pos.left, top: pos.top }}
+      className="glass-strong fixed z-[160] min-w-[230px] overflow-y-auto overscroll-contain rounded-2xl border border-border/50 p-1 text-[12.5px] shadow-elegant [scrollbar-width:thin]"
+      style={{ left: pos.left, top: pos.top, maxHeight: pos.maxH ?? "calc(100vh - 16px)" }}
       onClick={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
