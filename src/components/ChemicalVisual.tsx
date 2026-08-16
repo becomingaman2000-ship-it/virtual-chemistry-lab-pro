@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { useMemo } from "react";
+import { useId } from "react";
 import type { Chemical } from "@/data/chemicals";
 
 /**
@@ -17,7 +17,15 @@ export function ChemicalVisual({
   chem: Chemical;
   size?: number;
 }) {
-  const gradId = useMemo(() => `grad-${chem.id}-${Math.random().toString(36).slice(2, 6)}`, [chem.id]);
+  // useId, not Math.random: this id lands in the DOM, so a random value gives
+  // the server-rendered markup and the client a different one — a hydration
+  // mismatch, and prerendered HTML that changes on every build for no reason.
+  //
+  // Strip everything outside [A-Za-z0-9_-] as well. Ids like "ca(oh)2" and
+  // "pb(no3)2" contain brackets, and a fill of url(#grad-ca(oh)2-…) is parsed
+  // as ending at the first inner ")", so those swatches rendered unfilled.
+  const safeId = chem.id.replace(/[^a-zA-Z0-9_-]/g, "-");
+  const gradId = `grad-${safeId}-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const clipId = `clip-${gradId}`;
   const glowId = `glow-${gradId}`;
 
@@ -43,6 +51,9 @@ export function ChemicalVisual({
           cy="120"
           r="90"
           fill={`url(#${glowId})`}
+          // Seed the first keyframe. Without it framer-motion writes
+          // opacity="undefined" on the first paint, which the SVG parser rejects.
+          initial={{ opacity: 0.6, scale: 0.95 }}
           animate={{ opacity: [0.6, 1, 0.6], scale: [0.95, 1.05, 0.95] }}
           transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
         />
@@ -90,6 +101,10 @@ function LiquidView({
         <motion.path
           fill={chem.accent ?? chem.color}
           fillOpacity={0.55}
+          // A static `d` matching keyframe 0: an animated-only `d` renders as
+          // d="undefined" until the first animation frame lands.
+          d="M55 132 Q90 118 120 132 T190 132 L190 150 L55 150 Z"
+          initial={{ d: "M55 132 Q90 118 120 132 T190 132 L190 150 L55 150 Z" }}
           animate={{
             d: [
               "M55 132 Q90 118 120 132 T190 132 L190 150 L55 150 Z",
@@ -103,6 +118,8 @@ function LiquidView({
         <motion.path
           fill="white"
           fillOpacity={0.22}
+          d="M55 136 Q95 128 120 136 T190 136 L190 148 L55 148 Z"
+          initial={{ d: "M55 136 Q95 128 120 136 T190 136 L190 148 L55 148 Z" }}
           animate={{
             d: [
               "M55 136 Q95 128 120 136 T190 136 L190 148 L55 148 Z",
@@ -151,6 +168,7 @@ function SolidView({ chem, gradId }: { chem: Chemical; gradId: string }) {
       {/* powder pile / lump crystals */}
       <ellipse cx="120" cy="200" rx="70" ry="10" fill="rgba(0,0,0,0.15)" />
       <motion.g
+        initial={{ y: 0 }}
         animate={{ y: [0, -2, 0] }}
         transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
       >
@@ -204,6 +222,7 @@ function GasView({ chem, gradId }: { chem: Chemical; gradId: string }) {
         ry="14"
         fill={chem.accent ?? chem.color}
         opacity={0.25}
+        initial={{ cx: 90, opacity: 0.15 }}
         animate={{ cx: [90, 150, 90], opacity: [0.15, 0.35, 0.15] }}
         transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
       />
@@ -224,6 +243,7 @@ function FlameView({ chem, gradId }: { chem: Chemical; gradId: string }) {
         d="M120 60 C90 130 90 170 120 205 C150 170 150 130 120 60 Z"
         fill={`url(#${gradId})`}
         opacity={0.9}
+        initial={{ d: "M120 60 C90 130 90 170 120 205 C150 170 150 130 120 60 Z", opacity: 0.85 }}
         animate={{
           d: [
             "M120 60 C90 130 90 170 120 205 C150 170 150 130 120 60 Z",
@@ -240,6 +260,7 @@ function FlameView({ chem, gradId }: { chem: Chemical; gradId: string }) {
         d="M120 110 C108 150 108 180 120 200 C132 180 132 150 120 110 Z"
         fill={chem.accent ?? "#FFFFFF"}
         opacity={0.9}
+        initial={{ d: "M120 110 C108 150 108 180 120 200 C132 180 132 150 120 110 Z", opacity: 0.8 }}
         animate={{
           d: [
             "M120 110 C108 150 108 180 120 200 C132 180 132 150 120 110 Z",
@@ -259,6 +280,7 @@ function FlameView({ chem, gradId }: { chem: Chemical; gradId: string }) {
         ry="14"
         fill="white"
         opacity="0.9"
+        initial={{ ry: 10, opacity: 0.7 }}
         animate={{ ry: [10, 16, 10], opacity: [0.7, 1, 0.7] }}
         transition={{ duration: 0.5, repeat: Infinity, ease: "easeInOut" }}
       />

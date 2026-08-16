@@ -47,6 +47,7 @@ export function BeakerAnimation({ className }: { className?: string }) {
             width="110"
             height="110"
             fill="url(#liquid)"
+            initial={{ y: 130 }}
             animate={{ y: [130, 128, 132, 130] }}
             transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
           />
@@ -54,6 +55,7 @@ export function BeakerAnimation({ className }: { className?: string }) {
           <motion.path
             d="M55 130 Q80 122 110 130 T165 130 L165 145 L55 145 Z"
             fill="rgba(255,255,255,0.25)"
+            initial={{ d: "M55 130 Q80 122 110 130 T165 130 L165 145 L55 145 Z" }}
             animate={{ d: [
               "M55 130 Q80 122 110 130 T165 130 L165 145 L55 145 Z",
               "M55 130 Q80 138 110 130 T165 130 L165 145 L55 145 Z",

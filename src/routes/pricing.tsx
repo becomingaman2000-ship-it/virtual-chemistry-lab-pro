@@ -1,6 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { PageTransition } from "@/components/PageTransition";
 import { Check, Sparkles } from "lucide-react";
+import { COMPLETE_SYLLABUS_EXPERIMENTS } from "@/lib/lab/experimentsCatalog";
+
+// Single source of truth so the marketing copy can never drift from the catalogue.
+const EXPERIMENT_COUNT = COMPLETE_SYLLABUS_EXPERIMENTS.length;
 
 export const Route = createFileRoute("/pricing")({
   head: () => ({
@@ -20,18 +24,21 @@ const TIERS = [
     tagline: "Try the lab with the essentials.",
     features: ["Sandbox lab access", "3 sample experiments", "Basic apparatus & chemicals", "Community support"],
     cta: "Get started",
+    to: "/lab",
   },
   {
     name: "Student", price: "$7", cadence: "/ month",
     tagline: "Everything a full-time student needs.",
-    features: ["All 112 syllabus experiments", "PDF report export", "All syllabi (ZIMSEC, Cambridge, WAEC…)", "Periodic table & atom builder Pro", "Priority email support"],
+    features: [`All ${EXPERIMENT_COUNT} syllabus experiments`, "PDF report export", "All syllabi (ZIMSEC, Cambridge, WAEC…)", "Periodic table & atom builder Pro", "Priority email support"],
     cta: "Start Student",
+    to: "/contact",
   },
   {
     name: "Dynamic", price: "Flexible", cadence: "pay for what you use",
     tagline: "À-la-carte tool access — the recommended plan for hybrid learners.",
     features: ["Everything in Student", "Per-tool purchases (add periodic Pro, structure gallery, etc.)", "Monthly credit bundles", "Cancel anytime"],
     cta: "Configure Dynamic",
+    to: "/contact",
     highlight: true,
   },
   {
@@ -39,6 +46,7 @@ const TIERS = [
     tagline: "All-access to every current and future ChemVM tool.",
     features: ["Everything in Dynamic", "Full Project X content library", "Molecular structure gallery Pro", "Early access to new labs", "Priority live support"],
     cta: "Go All-Access",
+    to: "/contact",
   },
 ];
 
@@ -49,6 +57,9 @@ function PricingPage() {
         <div className="text-center">
           <h1 className="text-4xl font-semibold text-gradient" style={{ fontFamily: "var(--font-display)" }}>Simple, honest pricing</h1>
           <p className="mt-3 text-muted-foreground">Free to explore. Upgrade when you're ready for the full syllabus and PDF reports.</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Paid plans are being rolled out — get in touch and we will set your account up manually in the meantime.
+          </p>
         </div>
 
         <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -73,9 +84,12 @@ function PricingPage() {
                   </li>
                 ))}
               </ul>
-              <button className="mt-6 rounded-full bg-navy px-4 py-2.5 text-sm font-medium text-peach dark:bg-turquoise dark:text-charcoal">
+              <Link
+                to={t.to}
+                className="mt-6 block rounded-full bg-navy px-4 py-2.5 text-center text-sm font-medium text-peach transition hover:opacity-90 dark:bg-turquoise dark:text-charcoal"
+              >
                 {t.cta}
-              </button>
+              </Link>
             </div>
           ))}
         </div>

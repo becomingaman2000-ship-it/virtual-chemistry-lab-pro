@@ -7,6 +7,7 @@
  * awarded that was not observed in the action log / readings.
  */
 
+import { CHEMICAL_DATABASE } from "@/lib/lab/dwsimChemicals";
 import type { SyllabusExperiment } from "@/lib/lab/experimentsCatalog";
 import type { Syllabus } from "@/data/syllabi";
 import type { ActionKind } from "@/data/experiments";
@@ -16,6 +17,12 @@ export interface EvidenceEntry {
   kind: string;
   label: string;
   experimentId?: number;
+  /**
+   * Chemical IDs this action actually involved. The rubric is written in terms
+   * of chemical IDs, so matching on this is exact — never try to recover the id
+   * by substring-matching the human-readable label.
+   */
+  chemicalIds?: string[];
 }
 
 export interface Reading {
@@ -34,6 +41,13 @@ export interface Criterion {
   label: string;
   kind: ActionKind;
   marks: number;
+  /**
+   * `marks` after the syllabus weighting for this action kind has been applied.
+   * `rawScore`/`rawTotal` are built from this value, so anything shown to the
+   * student (mark scheme table, PDF) must display `weightedMarks` — otherwise
+   * the line items visibly fail to add up to the headline total.
+   */
+  weightedMarks: number;
   achieved: boolean;
   evidence?: string;
   hint: string;
@@ -52,6 +66,12 @@ export interface MarkingOutcome {
 
 const norm = (s: string) => s.toLowerCase().replace(/[_-]+/g, " ");
 
+/** Human-readable name for a chemical id, for rubric labels students can read. */
+function chemicalDisplayName(id: string) {
+  const chem = CHEMICAL_DATABASE[id];
+  return chem && chem.name !== id ? chem.name : id.replace(/_/g, " ");
+}
+
 function stepsText(exp: SyllabusExperiment) {
   return norm([exp.objective, ...(exp.steps ?? []), exp.expectedResult ?? ""].join(" "));
 }
@@ -61,9 +81,11 @@ function mentions(text: string, words: string[]) {
 }
 
 /** Build the rubric this experiment should be marked against. */
-export function buildRubric(exp: SyllabusExperiment): Omit<Criterion, "achieved" | "evidence">[] {
+export type RubricItem = Omit<Criterion, "achieved" | "evidence" | "weightedMarks">;
+
+export function buildRubric(exp: SyllabusExperiment): RubricItem[] {
   const text = stepsText(exp);
-  const out: Omit<Criterion, "achieved" | "evidence">[] = [];
+  const out: RubricItem[] = [];
 
   out.push({
     id: "safety",
@@ -73,11 +95,12 @@ export function buildRubric(exp: SyllabusExperiment): Omit<Criterion, "achieved"
   });
 
   for (const id of exp.requiredChemicalIds ?? []) {
+    const display = chemicalDisplayName(id);
     out.push({
       id: `chem:${id}`,
-      label: `Used the correct reagent: ${id.replace(/_/g, " ")}`,
+      label: `Used the correct reagent: ${display}`,
       kind: "add", marks: 8,
-      hint: `This experiment requires ${id.replace(/_/g, " ")}.`,
+      hint: `This experiment requires ${display}.`,
     });
   }
 
@@ -149,18 +172,29 @@ export interface MarkInput {
   experiment: SyllabusExperiment;
   syllabus: Syllabus | null;
   log: EvidenceEntry[];
-  readings: Reading[];
-  observations: string[];
+  readings?: Reading[];
+  observations?: string[];
   hazards: number;
   reactionMatched: boolean;
   measuredAdds: number;
 }
 
 export function markAttempt(input: MarkInput): MarkingOutcome {
-  const { experiment, syllabus, log, readings, observations, hazards, reactionMatched, measuredAdds } = input;
+  const { experiment, syllabus, log, hazards, reactionMatched, measuredAdds } = input;
+  // Defensive: these are supplied by several call sites, keep marking robust.
+  const readings = input.readings ?? [];
+  const observations = input.observations ?? [];
   const labels = log.map((l) => norm(l.label));
   const has = (kind: string) => log.some((l) => l.kind === kind);
   const labelHas = (...words: string[]) => labels.some((l) => words.some((w) => w.length > 2 && l.includes(w)));
+
+  /** Every chemical id the student actually put into a vessel. */
+  const usedChemicalIds = new Set<string>();
+  for (const entry of log) {
+    for (const id of entry.chemicalIds ?? []) usedChemicalIds.add(id);
+  }
+
+  const weight = (k: ActionKind) => (syllabus ? syllabus.weights[k] ?? 1 : 1);
 
   const criteria: Criterion[] = buildRubric(experiment).map((c) => {
     let achieved = false;
@@ -172,8 +206,12 @@ export function markAttempt(input: MarkInput): MarkingOutcome {
       achieved = !!firstPlace && (!firstAdd || firstPlace.ts <= firstAdd.ts);
       if (achieved) evidence = "Apparatus placed before reagents";
     } else if (c.id.startsWith("chem:")) {
-      const chem = norm(c.id.slice(5));
-      achieved = labelHas(chem, chem.split(" ")[0]);
+      // Match on the chemical IDs recorded against the action, NOT on the
+      // display-name text of the label. The old substring comparison (id
+      // "cacl2_sol" vs label "...Calcium Chloride Solution...") could never
+      // hit, which made ~69% of all reagent criteria unachievable.
+      const wanted = c.id.slice(5);
+      achieved = usedChemicalIds.has(wanted);
       if (achieved) evidence = "Reagent added on the bench";
     } else if (c.id === "measure") {
       achieved = measuredAdds > 0;
@@ -201,16 +239,21 @@ export function markAttempt(input: MarkInput): MarkingOutcome {
       achieved = observations.length > 0 || has("observe");
       if (achieved) evidence = `${observations.length} written observation(s)`;
     } else if (c.id === "nohazard") {
-      achieved = hazards === 0;
-      if (!achieved) evidence = `${hazards} incident(s)`;
+      // This rewards working safely, not sitting on your hands: an untouched
+      // bench cannot cause an incident, so it must not earn the safety marks.
+      const didSomething = log.length > 0;
+      achieved = hazards === 0 && didSomething;
+      if (hazards > 0) evidence = `${hazards} incident(s)`;
+      else if (!didSomething) evidence = "no practical work attempted";
     }
 
-    return { ...c, achieved, evidence };
+    return { ...c, weightedMarks: Math.round(c.marks * weight(c.kind)), achieved, evidence };
   });
 
-  const weight = (k: ActionKind) => (syllabus ? syllabus.weights[k] ?? 1 : 1);
-  const rawTotal = criteria.reduce((s, c) => s + c.marks * weight(c.kind), 0);
-  const rawScore = criteria.reduce((s, c) => s + (c.achieved ? c.marks * weight(c.kind) : 0), 0);
+  // Totals are built from the same rounded line items the student is shown,
+  // so the mark scheme column always adds up to the headline figure.
+  const rawTotal = criteria.reduce((s, c) => s + c.weightedMarks, 0);
+  const rawScore = criteria.reduce((s, c) => s + (c.achieved ? c.weightedMarks : 0), 0);
   const percent = rawTotal > 0 ? Math.round((rawScore / rawTotal) * 100) : 0;
 
   const band = syllabus
@@ -224,7 +267,7 @@ export function markAttempt(input: MarkInput): MarkingOutcome {
     percent,
     grade: band.grade,
     descriptor: band.descriptor,
-    correct: criteria.filter((c) => c.achieved).map((c) => ({ label: `${c.label}${c.evidence ? ` - ${c.evidence}` : ""} (${c.marks})` })),
+    correct: criteria.filter((c) => c.achieved).map((c) => ({ label: `${c.label}${c.evidence ? ` - ${c.evidence}` : ""} (${c.weightedMarks})` })),
     missed: criteria.filter((c) => !c.achieved).map((c) => ({ label: `${c.label} - ${c.hint}` })),
   };
 }

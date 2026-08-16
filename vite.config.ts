@@ -21,10 +21,14 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 3000,
+    // Allow proxied/tunnelled preview hosts (e.g. cloud sandboxes) to reach
+    // the dev server; Vite blocks unknown Host headers by default.
+    allowedHosts: true,
   },
   preview: {
     host: "0.0.0.0",
     port: 4173,
+    allowedHosts: true,
   },
   plugins: [
     tailwindcss(),
@@ -42,6 +46,12 @@ export default defineConfig({
       },
     }),
     viteReact(),
-    nitro(),
+    // `renderer: false` stops Nitro auto-adopting the repo-root `index.html`
+    // (a committed GitHub Pages publish artifact) as its HTML template. Without
+    // this, dev and every subsequent build serve the *previous* deploy's shell,
+    // which hardcodes the `/virtual-chemistry-lab-pro/` base path and breaks
+    // asset URLs whenever BASE_PATH differs. TanStack Start supplies the real
+    // document renderer, so Nitro's fallback is never needed.
+    nitro({ renderer: false }),
   ],
 });
