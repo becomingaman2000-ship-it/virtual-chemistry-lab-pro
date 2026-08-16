@@ -1,0 +1,1 @@
+import{t as e}from"./ComingSoon-DCFaXcIg.js";import{c as t}from"./index-DasdhNoj.js";var n=t(),r=()=>(0,n.jsx)(e,{label:`About Project X`,piece:`More`,note:`A dedicated page for the team behind ChemVM lands soon.`});export{r as component};

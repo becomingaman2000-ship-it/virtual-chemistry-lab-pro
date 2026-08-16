@@ -19,7 +19,7 @@ import {
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Beaker, BookOpen, ChevronDown, ChevronLeft, ChevronRight,
+  Beaker, BookOpen, ChevronDown, ChevronRight,
   ClipboardList, Droplets, FlaskConical, Flame, GraduationCap, PanelLeftClose,
   PanelLeftOpen, Play, RotateCw, Search, Snowflake, TestTube, ThermometerSun,
   Trash2, Wand2, X,
@@ -39,8 +39,8 @@ import { PDF_CATEGORY_LABELS, metaFor, fitsLevel, type PdfCategory } from "@/lib
 import { SYLLABI, type Syllabus } from "@/data/syllabi";
 import { generateReportPdf, downloadReportPdf } from "@/lib/lab/reportPdf";
 import {
-  FLAMES, flameSpec, flamesFor, defaultFlameFor, stepPhysics, vesselLimits,
-  measurementUnit, MEASURE_PRESETS, type FlameId, type Hazard,
+  FLAMES, flameSpec, flamesFor, defaultFlameFor, stepPhysics,
+  flameIntensity, measurementUnit, MEASURE_PRESETS, type FlameId,
 } from "@/lib/lab/physics";
 import {
   INDICATORS, GAS_TESTS, SEPARATIONS, runIndicator, runGasTest, runFlameTest,
@@ -77,6 +77,9 @@ interface PlacedApparatus {
   burning?: string | null;             // combustion flame colour
   dryTicks: number;
   pressure: number;
+  /** boiling heat points — 1 at first boil, +1 each second while boiling */
+  boilHeat: number;
+  boilMs: number;
   state?: ContainerState;              // only if container
   fx: { boiling: boolean; freezing: boolean; foaming: boolean; crystallising: boolean; exploding: number; silverMirror: boolean };
   lastReaction?: ReactionResult | null;
@@ -207,7 +210,7 @@ function makePlaced(item: ApparatusItem, x: number, y: number, z: number): Place
   return {
     uid, item, role, x, y, z, swayAmp: 0, ignited: false,
     flame: role === "heat" ? defaultFlameFor(item.id) : undefined,
-    rotation: 0, dryTicks: 0, pressure: 0, sealed: false, broken: false,
+    rotation: 0, dryTicks: 0, pressure: 0, boilHeat: 0, boilMs: 0, sealed: false, broken: false,
     sooty: false, burning: null,
     containerType: ct,
     state: ct
@@ -259,7 +262,7 @@ export function LabBench() {
   const [experimentId, setExperimentId] = useState(1);
   const experiment: SyllabusExperiment =
     COMPLETE_SYLLABUS_EXPERIMENTS.find((e) => e.id === experimentId) ?? COMPLETE_SYLLABUS_EXPERIMENTS[0];
-  const [mode, setMode] = useState<Mode>("manual");
+  const [mode, setMode] = useState<Mode>("practice");
 
   const applicableExperiments = useMemo(
     () => COMPLETE_SYLLABUS_EXPERIMENTS.filter((e) => {
@@ -593,23 +596,71 @@ export function LabBench() {
       let notice = "";
       for (const app of placedRef.current) {
         if (!app.state || app.broken) continue;
-        // is any ignited burner within reach beneath?
-        const burner = placedRef.current.find((h) =>
-          h.role === "heat" && h.ignited
-          && Math.abs((h.x + h.item.width / 2) - (app.x + app.item.width / 2)) < 60
-          && (h.y - (app.y + app.item.height)) < 40 && h.y > app.y);
-        const heated = !!burner;
-        const spec = burner ? flameSpec(burner.flame) : null;
+        // Closest ignited heat source. Further away → weaker flame (cooler max T).
+        const vesselCx = app.x + app.item.width / 2;
+        const vesselBottom = app.y + app.item.height;
+        let bestIntensity = 0;
+        let spec: ReturnType<typeof flameSpec> | null = null;
+        for (const h of placedRef.current) {
+          if (h.role !== "heat" || !h.ignited) continue;
+          const hx = h.x + h.item.width / 2;
+          const hy = h.y;
+          const dx = hx - vesselCx;
+          const dy = hy - vesselBottom;
+          // Flame sitting well above the vessel cannot heat it from underneath.
+          if (dy < -20) continue;
+          const intensity = flameIntensity(Math.hypot(dx, dy));
+          if (intensity > bestIntensity) {
+            bestIntensity = intensity;
+            spec = flameSpec(h.flame);
+          }
+        }
+        const heated = !!spec && bestIntensity > 0.02;
         app.state.isHeated = heated;
-        if (spec && app.state.temperature < spec.maxTemp) {
-          app.state.temperature = Math.min(spec.maxTemp, app.state.temperature + spec.ramp); dirty = true;
-        } else if (!heated && app.state.temperature > 22) {
-          app.state.temperature = Math.max(22, app.state.temperature - 1.5); dirty = true;
+        if (spec && heated) {
+          const maxT = 22 + (spec.maxTemp - 22) * bestIntensity;
+          const ramp = spec.ramp * bestIntensity;
+          if (app.state.temperature < maxT) {
+            app.state.temperature = Math.min(maxT, app.state.temperature + ramp);
+            dirty = true;
+          } else if (app.state.temperature > maxT + 0.5) {
+            app.state.temperature = Math.max(maxT, app.state.temperature - 0.8);
+            dirty = true;
+          }
+        } else if (app.state.temperature > 22) {
+          app.state.temperature = Math.max(22, app.state.temperature - 1.5);
+          dirty = true;
+        }
+
+        // Boiling heat points: start at 1, +1 every second while boiling.
+        const volNow = Object.values(app.state.substanceIds).reduce((s, v) => s + v, 0);
+        const boilingIdsNow = Object.keys(app.state.substanceIds).filter((id) => {
+          if (!(app.state!.substanceIds[id] > 0)) return false;
+          const chem = getChemical(id);
+          const bp = chem.boilingPoint ?? (chem.state === "solid" ? 900 : 100);
+          return app.state!.temperature >= bp;
+        });
+        const boilingNow = volNow > 0 && boilingIdsNow.length > 0;
+        if (boilingNow) {
+          if (app.boilHeat < 1) app.boilHeat = 1;
+          app.boilMs += 350;
+          while (app.boilMs >= 1000) {
+            app.boilMs -= 1000;
+            app.boilHeat += 1;
+          }
+          dirty = true;
+        } else if (app.boilHeat !== 0 || app.boilMs !== 0) {
+          app.boilHeat = 0;
+          app.boilMs = 0;
+          dirty = true;
         }
 
         // ---- physical consequences ----
         const out = stepPhysics(
-          { state: app.state, shape: app.item.shape, flame: spec, sealed: !!app.sealed, dryTicks: app.dryTicks },
+          {
+            state: app.state, shape: app.item.shape, flame: heated ? spec : null,
+            sealed: !!app.sealed, dryTicks: app.dryTicks, boilHeat: app.boilHeat,
+          },
           app.pressure,
         );
         app.dryTicks = out.dryTicks;
@@ -719,7 +770,7 @@ export function LabBench() {
     app.state.substanceIds = {}; app.state.precipitate = null; app.state.bubblingGas = null;
     app.state.flameColor = null; app.state.color = "rgba(200,220,240,0.15)";
     app.state.pH = 7; app.state.currentVolume = 0;
-    app.burning = null; app.dryTicks = 0; app.pressure = 0;
+    app.burning = null; app.dryTicks = 0; app.pressure = 0; app.boilHeat = 0; app.boilMs = 0;
     app.fx = { boiling: false, freezing: false, foaming: false, crystallising: false, exploding: 0, silverMirror: false };
     app.lastReaction = null;
     setPlaced((p) => [...p]);
@@ -837,6 +888,104 @@ export function LabBench() {
     pushLog({ kind: "pour", label: `Poured from ${from.item.name} into ${to.item.name}` });
     setMessage(`Pouring ${from.item.name} → ${to.item.name}…`);
     setPlaced((p) => [...p]);
+  };
+
+  const practiceAutoSetup = () => {
+    const wrap = benchRef.current; if (!wrap) return;
+    commit();
+    const rect = wrap.getBoundingClientRect();
+    const additions: PlacedApparatus[] = [];
+    let cursorX = 48;
+    const floorY = rect.height - 210;
+    const usedIds = new Set<string>();
+
+    const needsHeat = /heat|warm|boil|burn|flame|ignite|reflux|evaporat|distil/i
+      .test([experiment.objective, ...(experiment.steps ?? [])].join(" "));
+
+    // Stack vessel over tripod + gauze + ignited burner so the student can just watch.
+    if (needsHeat) {
+      const bunsen = APPARATUS.find((a) => a.id === "bunsen");
+      const tripod = APPARATUS.find((a) => a.id === "tripod");
+      const gauze = APPARATUS.find((a) => a.id === "gauze");
+      const vesselItem = requiredApparatus.find((a) => !!CONTAINER_SHAPES[a.shape])
+        ?? APPARATUS.find((a) => a.id === "beaker");
+      if (tripod && gauze && bunsen && vesselItem) {
+        const bx = 70;
+        const by = floorY;
+        const tripodP = makePlaced(tripod, bx, by, 0);
+        const gauzeP = makePlaced(gauze, bx + (tripod.width - gauze.width) / 2, by - 4, 1);
+        const vesselP = makePlaced(
+          vesselItem,
+          bx + (tripod.width - vesselItem.width) / 2,
+          Math.max(16, by - 4 - vesselItem.height),
+          3,
+        );
+        const bunsenP = makePlaced(
+          bunsen,
+          bx + (tripod.width - bunsen.width) / 2,
+          by + tripod.height - 20,
+          0,
+        );
+        bunsenP.ignited = true;
+        additions.push(tripodP, gauzeP, bunsenP, vesselP);
+        usedIds.add(tripod.id); usedIds.add(gauze.id); usedIds.add(bunsen.id); usedIds.add(vesselItem.id);
+        cursorX = bx + tripod.width + 36;
+      }
+    }
+
+    for (const item of requiredApparatus) {
+      if (usedIds.has(item.id)) continue;
+      const x = cursorX;
+      const y = Math.max(24, floorY + 30 - item.height);
+      additions.push(makePlaced(item, x, y, additions.length));
+      cursorX += item.width + 28;
+      usedIds.add(item.id);
+    }
+
+    if (needsHeat) {
+      for (const a of additions) if (a.role === "heat") a.ignited = true;
+    }
+
+    let vessel = additions.find((a) => a.state);
+    if (!vessel) {
+      const beaker = APPARATUS.find((a) => a.id === "beaker");
+      if (beaker) {
+        const beakerP = makePlaced(beaker, 80, Math.max(24, floorY - beaker.height), additions.length);
+        additions.push(beakerP);
+        vessel = beakerP;
+      }
+    }
+
+    if (vessel?.state) {
+      for (const id of experiment.requiredChemicalIds) {
+        const chem = getChemical(id);
+        const amount = chem.state === "solid" ? 2 : 10;
+        vessel.state.substanceIds[chem.id] = (vessel.state.substanceIds[chem.id] || 0) + amount;
+        measuredAddsRef.current += 1;
+        pushLog({
+          kind: "add",
+          label: `Measured ${amount} ${measurementUnit(chem.state)} of ${chem.name} into ${vessel.item.name}`,
+        });
+      }
+      runReactionOn(vessel);
+      setSelectedUid(vessel.uid);
+      setSelectedUids([vessel.uid]);
+    }
+
+    for (const a of additions) {
+      if (a.role !== "container" || a === vessel) {
+        pushLog({ kind: "place", label: `Placed ${a.item.name}` });
+      } else {
+        pushLog({ kind: "place", label: `Placed ${a.item.name}` });
+      }
+    }
+    if (needsHeat) {
+      const burner = additions.find((a) => a.role === "heat" && a.ignited);
+      if (burner) pushLog({ kind: "heat", label: `Ignited ${burner.item.name} — ${flameSpec(burner.flame).label}` });
+    }
+
+    setPlaced(additions);
+    setMessage("Practice auto-setup ready. Watch the reaction, record observations, then tap Score my attempt.");
   };
 
   const autoSetup = (kind: "burner" | "retort") => {
@@ -1030,8 +1179,7 @@ export function LabBench() {
 
   const onPieceContext = (e: React.MouseEvent, app: PlacedApparatus) => {
     e.preventDefault();
-    const rect = benchRef.current!.getBoundingClientRect();
-    setCtxMenu({ x: e.clientX - rect.left, y: e.clientY - rect.top, uid: app.uid });
+    setCtxMenu({ x: e.clientX, y: e.clientY, uid: app.uid });
     setSelectedUid(app.uid);
     if (!selectedUids.includes(app.uid)) setSelectedUids([app.uid]);
   };
@@ -1102,6 +1250,17 @@ export function LabBench() {
   const toggleGroup = (id: string) => setExpandedGroups((g) => ({ ...g, [id]: !g[id] }));
 
   const meta = metaFor(experimentId);
+
+  const liveScore = useMemo(() => markAttempt({
+    experiment,
+    syllabus: currentSyllabus,
+    log: log.map((l) => ({ ts: l.ts, kind: l.kind, label: l.label, experimentId: l.experimentId })),
+    readings,
+    observations,
+    hazards: hazardsRef.current,
+    reactionMatched: log.some((l) => l.experimentId === experimentId),
+    measuredAdds: measuredAddsRef.current,
+  }), [experiment, currentSyllabus, log, readings, observations, experimentId]);
 
   /* ============================================================
      Render
@@ -1394,11 +1553,16 @@ export function LabBench() {
             const isH = app.role === "heat";
             return (
               <div
-                className="glass-strong absolute z-30 min-w-[190px] rounded-2xl border border-border/50 p-1 text-[12.5px] shadow-elegant"
-                style={{ left: Math.min(ctxMenu.x, (benchRef.current?.clientWidth ?? 800) - 210), top: Math.min(ctxMenu.y, (benchRef.current?.clientHeight ?? 500) - 260) }}
+                className="glass-strong fixed z-[160] min-w-[230px] max-h-[min(70vh,420px)] overflow-y-scroll overscroll-contain rounded-2xl border border-border/50 p-1 text-[12.5px] shadow-elegant [scrollbar-width:thin]"
+                style={{
+                  left: Math.max(8, Math.min(ctxMenu.x, window.innerWidth - 250)),
+                  top: Math.max(8, Math.min(ctxMenu.y, window.innerHeight - 180)),
+                }}
                 onClick={(e) => e.stopPropagation()}
+                onWheel={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
               >
-                <CtxHeader label={app.item.name} />
+                <CtxHeader label={`${app.item.name} · scroll for more`} />
                 {isC && <CtxItem icon={Ruler} label="Measure & add reagent…" onClick={() => { setSidebarTab("chemicals"); setMessage("Pick a reagent in the sidebar — you'll be asked for the amount."); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={Snowflake} label="Chill (freeze)" onClick={() => { chillContainer(app.uid); setCtxMenu(null); }} />}
                 {isC && <CtxItem icon={Droplets} label="Empty container" onClick={() => { emptyContainer(app.uid); setCtxMenu(null); }} />}
@@ -1525,6 +1689,15 @@ export function LabBench() {
 
         {/* action strip */}
         <div className="flex flex-wrap items-center gap-1.5 border-t border-border/40 bg-background/40 px-3 py-2">
+          {mode === "practice" && (
+            <button
+              onClick={practiceAutoSetup}
+              className="inline-flex items-center gap-1 rounded-full bg-turquoise px-3.5 py-2 text-[12.5px] font-bold text-charcoal shadow ring-2 ring-turquoise/60 hover:opacity-90"
+              title="Place every required item and reagent so you can just observe, then score"
+            >
+              <Wand2 size={13} /> Practice auto-setup
+            </button>
+          )}
           <button
             onClick={() => autoSetup("burner")}
             className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-background/60 px-3 py-1.5 text-[12px] font-medium hover:bg-turquoise/15"
@@ -1585,19 +1758,24 @@ export function LabBench() {
             >
               <Table2 size={12} /> Results ({readings.length})
             </button>
-            {mode === "test" && (
+            {(mode === "test" || mode === "practice") && (
               <>
-                <button
-                  onClick={resetTest}
-                  className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-background/60 px-3 py-1.5 text-[12px] font-medium hover:bg-foreground/5"
-                >
-                  <RotateCw size={12} /> Reset test
-                </button>
+                {mode === "test" && (
+                  <button
+                    onClick={resetTest}
+                    className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-background/60 px-3 py-1.5 text-[12px] font-medium hover:bg-foreground/5"
+                  >
+                    <RotateCw size={12} /> Reset test
+                  </button>
+                )}
+                <span className="inline-flex rounded-full border border-turquoise/40 bg-turquoise/10 px-2.5 py-1 font-mono text-[11px] font-semibold text-turquoise">
+                  Live {liveScore.percent}% · {liveScore.rawScore}/{liveScore.rawTotal}
+                </span>
                 <button
                   onClick={scoreAttempt}
-                  className="inline-flex items-center gap-1 rounded-full bg-navy px-3 py-1.5 text-[12px] font-semibold text-peach shadow hover:opacity-90 dark:bg-turquoise dark:text-charcoal"
+                  className="inline-flex items-center gap-1 rounded-full bg-navy px-4 py-2 text-[13px] font-bold text-peach shadow-elegant ring-2 ring-peach/50 hover:opacity-90 dark:bg-turquoise dark:text-charcoal"
                 >
-                  <Play size={12} /> Score attempt
+                  <Play size={14} /> Score my attempt
                 </button>
               </>
             )}
@@ -1673,6 +1851,19 @@ export function LabBench() {
         </AnimatePresence>
 
       </section>
+
+      {(mode === "practice" || mode === "test") && !report && (
+        <button
+          onClick={scoreAttempt}
+          className="fixed bottom-5 right-5 z-[180] inline-flex items-center gap-2 rounded-full bg-navy px-5 py-3 text-[14px] font-bold text-peach shadow-elegant ring-2 ring-peach/60 hover:opacity-90 dark:bg-turquoise dark:text-charcoal"
+        >
+          <Play size={16} />
+          Score my attempt
+          <span className="rounded-full bg-peach/20 px-2 py-0.5 font-mono text-[11px] dark:bg-charcoal/20">
+            {liveScore.percent}%
+          </span>
+        </button>
+      )}
 
       {/* ================= REPORT MODAL ================= */}
       {/* ---------- measured-amount dialog ---------- */}
@@ -1913,7 +2104,7 @@ export function LabBench() {
       <AnimatePresence>
         {report && (
           <motion.div
-            className="fixed inset-0 z-[80] grid place-items-center bg-charcoal/60 p-4 backdrop-blur-md"
+            className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto bg-charcoal/80 p-3 py-5 backdrop-blur-md sm:p-6"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -1925,16 +2116,22 @@ export function LabBench() {
               animate={{ y: 0, opacity: 1, scale: 1 }}
               exit={{ y: 20, opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="glass-strong relative w-full max-w-2xl overflow-hidden rounded-3xl border border-border/50 p-6 shadow-elegant"
+              className="glass-strong relative my-auto flex w-full max-w-4xl max-h-[min(94vh,960px)] flex-col overflow-hidden rounded-3xl border border-border/50 shadow-elegant"
             >
-              <button onClick={() => setReport(null)} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full border border-border/50 bg-background/50 hover:bg-foreground/10">
-                <X size={14} />
-              </button>
-              <div className="text-[10px] font-mono uppercase tracking-widest text-turquoise">Test Report · {currentSyllabus.board}</div>
-              <h2 className="mt-1 text-2xl font-semibold leading-tight" style={{ fontFamily: "var(--font-display)" }}>
-                Experiment #{experiment.id} — {experiment.title}
-              </h2>
-              <div className="mt-5 grid gap-4 md:grid-cols-[180px_1fr]">
+              <div className="sticky top-0 z-10 shrink-0 border-b border-border/40 bg-background/90 px-5 py-4 backdrop-blur-md sm:px-7">
+                <button onClick={() => setReport(null)} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full border border-border/50 bg-background/50 hover:bg-foreground/10">
+                  <X size={14} />
+                </button>
+                <div className="text-[10px] font-mono uppercase tracking-widest text-turquoise">
+                  {mode === "practice" ? "Practice" : "Test"} report · {currentSyllabus.board}
+                </div>
+                <h2 className="mt-1 pr-10 text-2xl font-semibold leading-tight" style={{ fontFamily: "var(--font-display)" }}>
+                  Experiment #{experiment.id} — {experiment.title}
+                </h2>
+                <p className="mt-1 text-[12.5px] text-muted-foreground">{experiment.expectedResult}</p>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7">
+              <div className="grid gap-4 md:grid-cols-[200px_1fr]">
                 <div className="rounded-2xl border border-border/40 bg-background/40 p-4 text-center">
                   <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Score</div>
                   <div className="text-4xl font-bold text-gradient" style={{ fontFamily: "var(--font-display)" }}>{report.percent}%</div>
@@ -1966,23 +2163,49 @@ export function LabBench() {
                 </div>
               </div>
               {/* mark scheme breakdown */}
-              <div className="mt-4 max-h-44 overflow-auto rounded-2xl border border-border/40 bg-background/40 p-3">
+              <div className="mt-4 rounded-2xl border border-border/40 bg-background/40 p-3">
                 <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Mark scheme — {currentSyllabus.board} {currentSyllabus.level}</div>
                 <table className="w-full text-left text-[12px]">
                   <tbody>
                     {report.criteria.map((c) => (
                       <tr key={c.id} className="border-t border-border/30">
                         <td className="py-1 pr-2">{c.achieved ? "✓" : "✗"}</td>
-                        <td className="py-1 pr-2">{c.label}</td>
+                        <td className="py-1 pr-2">
+                          <div>{c.label}</div>
+                          {!c.achieved && c.hint && (
+                            <div className="text-[11px] text-muted-foreground">{c.hint}</div>
+                          )}
+                          {c.achieved && c.evidence && (
+                            <div className="text-[11px] text-turquoise/80">{c.evidence}</div>
+                          )}
+                        </td>
                         <td className={`py-1 text-right tabular-nums ${c.achieved ? "text-turquoise" : "text-muted-foreground"}`}>{c.achieved ? c.marks : 0}/{c.marks}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              {readings.length > 0 && (
-                <div className="mt-3 max-h-36 overflow-auto rounded-2xl border border-border/40 bg-background/40 p-3">
-                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Table of results ({readings.length})</div>
+              <div className="mt-3 rounded-2xl border border-border/40 bg-background/40 p-3">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Action transcript ({log.length})</div>
+                {log.length === 0 ? (
+                  <p className="text-[12px] text-muted-foreground">No actions recorded on this attempt.</p>
+                ) : (
+                  <ul className="space-y-1 text-[11.5px]">
+                    {[...log].reverse().map((l, i) => (
+                      <li key={`${l.ts}-${i}`} className="flex gap-2 border-t border-border/20 py-1">
+                        <span className="w-16 shrink-0 tabular-nums text-muted-foreground">{new Date(l.ts).toLocaleTimeString()}</span>
+                        <span className="w-14 shrink-0 font-mono text-[10px] uppercase text-turquoise">{l.kind}</span>
+                        <span className="min-w-0 flex-1">{l.label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="mt-3 rounded-2xl border border-border/40 bg-background/40 p-3">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Table of results ({readings.length})</div>
+                {readings.length === 0 ? (
+                  <p className="text-[12px] text-muted-foreground">No readings recorded — use Record reading or Observe during the attempt.</p>
+                ) : (
                   <table className="w-full text-left text-[11.5px]">
                     <tbody>
                       {readings.map((r, i) => (
@@ -1998,8 +2221,8 @@ export function LabBench() {
                       ))}
                     </tbody>
                   </table>
-                </div>
-              )}
+                )}
+              </div>
               {/* Student info + observations for PDF */}
               <div className="mt-5 grid gap-3 rounded-2xl border border-border/40 bg-background/40 p-4 md:grid-cols-3">
                 <label className="text-[11px]">
@@ -2044,7 +2267,9 @@ export function LabBench() {
                   )}
                 </div>
               </div>
-              <div className="mt-6 flex justify-end gap-2">
+              </div>
+              <div className="shrink-0 border-t border-border/40 bg-background/90 px-5 py-3 backdrop-blur-md sm:px-7">
+                <div className="flex flex-wrap justify-end gap-2">
                 <button
                   onClick={() => { setReport(null); resetTest(); }}
                   className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-background/60 px-4 py-2 text-[13px] font-medium hover:bg-foreground/5"
@@ -2064,6 +2289,7 @@ export function LabBench() {
                 >
                   Close report
                 </button>
+                </div>
               </div>
             </motion.div>
           </motion.div>
@@ -2239,6 +2465,7 @@ function PlacedPiece({
         {showTemp && (
           <div className="absolute -top-5 right-0 whitespace-nowrap rounded-md bg-orange-500/90 px-1.5 py-0.5 font-mono text-[9.5px] text-white shadow">
             {state!.temperature.toFixed(0)}°C
+            {app.fx.boiling && app.boilHeat > 0 ? ` · H${app.boilHeat}` : ""}
           </div>
         )}
       </div>
